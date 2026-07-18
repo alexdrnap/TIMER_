@@ -30,12 +30,13 @@
   button:active{transform:translateY(1px)}
   button:disabled{opacity:.35;cursor:default}
   input,textarea,select{font-family:inherit;font-size:12px;color:var(--ink);
-    background:#101217;border:1px solid var(--line);border-radius:5px;padding:5px 6px}
+    background:#101217;border:1px solid var(--line);border-radius:5px;padding:2px 5px}
   input:focus,textarea:focus{outline:1px solid var(--l2);border-color:var(--l2)}
   .mut{color:var(--dim)}
 
-  header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);
-    padding:7px 8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  #top{position:sticky;top:0;z-index:30;background:var(--bg)}
+  header{background:var(--bg);border-bottom:1px solid var(--line);
+    padding:4px 6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .brand{font-weight:700;letter-spacing:1px;font-size:15px}
   .brand b{color:var(--l1)}
   .hbtns{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto;align-items:center}
@@ -43,58 +44,58 @@
   .add{color:var(--green);border-color:#2c4a38}
   .del{color:var(--danger);border-color:#4a2c2c}.del.on{background:#33191a;color:#ffb4b1}
 
-  .tabs{display:flex;gap:3px;padding:6px 8px 0;overflow-x:auto;border-bottom:1px solid var(--line)}
-  .tab{flex:0 0 auto;padding:6px 9px;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;
+  .tabs{display:flex;gap:3px;padding:2px 6px 0;overflow-x:auto;border-bottom:1px solid var(--line)}
+  .tab{flex:0 0 auto;padding:3px 9px;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;
     background:var(--panel);color:var(--dim);font-size:12px;position:relative;top:1px;white-space:nowrap}
   .tab.active{background:var(--panel2);color:var(--ink)}
   .tab small{display:block;font-size:9px;color:var(--faint)}
   .tab.today small{color:var(--l2)}
 
-  .subbar{display:flex;align-items:center;gap:8px;padding:6px 8px}
-  .subbar .next{color:var(--l1);border-color:#4a3a1c}
+  .subbar{display:flex;align-items:center;gap:8px;padding:3px 6px}
+  .subbar .next{color:var(--l1);border-color:#4a3a1c;padding:3px 8px}
   .count{color:var(--dim);font-size:11px}
 
-  #list{padding:2px 8px 8px}
-  .grp{margin:10px 0 2px;font-size:10px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase;
+  #list{padding:1px 6px 40px}
+  .grp{margin:3px 0 1px;font-size:10px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase;
     display:flex;align-items:center;gap:6px}
   .grp .dot{width:7px;height:7px;border-radius:2px}
   .grp.l1 .dot{background:var(--l1)} .grp.l2 .dot{background:var(--l2)} .grp.l3 .dot{background:var(--l3)}
 
-  .task{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 7px;margin:5px 0;position:relative}
+  .task{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 5px;margin:1px 0;position:relative}
   .task.l1{border-left:3px solid var(--l1)} .task.l2{border-left:3px solid var(--l2)} .task.l3{border-left:3px solid var(--l3)}
   .task.done{opacity:.6}
   .task.overdue:not(.done){border-color:#5a2f2c}
-  .row1{display:flex;align-items:center;gap:6px}
+  .row1{display:flex;align-items:center;gap:5px}
   .txt{flex:1;min-width:0}
-  .txt input{width:100%;border-color:transparent;background:transparent;padding:4px}
+  .txt input{width:100%;border-color:transparent;background:transparent;padding:1px 3px}
   .task.done .txt input{text-decoration:line-through;color:var(--dim)}
-  .play{flex:0 0 auto;width:30px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--l2);border-color:#243b4d;font-size:13px;padding:0}
+  .play{flex:0 0 auto;width:28px;height:24px;display:flex;align-items:center;justify-content:center;color:var(--l2);border-color:#243b4d;font-size:13px;padding:0}
   .play.running{color:var(--bg);background:var(--l2);border-color:var(--l2);animation:pulse 1s infinite}
   @keyframes pulse{50%{opacity:.55}}
   .elapsed{font-variant-numeric:tabular-nums;color:var(--l2);font-size:12px;min-width:52px;text-align:right}
   .elapsed.alarm{color:var(--l1);animation:pulse .7s infinite}
 
-  .row2{display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap}
+  .row2{display:flex;align-items:center;gap:5px;margin-top:1px;flex-wrap:wrap}
   .row2 input[type=date]{width:118px}
-  .row2 input[type=time]{width:78px}
-  .dur{width:44px;text-align:center}
-  .daily{font-size:11px;color:var(--l1);border:1px solid #4a3a1c;border-radius:4px;padding:2px 6px}
-  .note{width:30px;height:28px;padding:0;color:var(--dim);font-size:13px}
+  .row2 input[type=time]{width:74px}
+  .dur{width:42px;text-align:center}
+  .daily{font-size:11px;color:var(--l1);border:1px solid #4a3a1c;border-radius:4px;padding:1px 6px}
+  .note{width:28px;height:24px;padding:0;color:var(--dim);font-size:13px}
   .note.has{color:var(--l1);border-color:#4a3a1c}
-  .xdel{width:28px;height:28px;padding:0;color:var(--danger);font-size:13px}
+  .xdel{width:26px;height:24px;padding:0;color:var(--danger);font-size:13px}
   .chk{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--dim);margin-left:auto}
   .chk input{width:16px;height:16px;accent-color:var(--green)}
   .tag{font-size:10px;border-radius:4px;padding:0 4px}
   .tag.over{color:#ff9b96;border:1px solid #5a2f2c}
   .empty{color:var(--faint);text-align:center;padding:24px 10px;font-size:12px}
   .dmy{width:104px;text-align:center}
-  .brc{width:34px;height:28px;padding:0;color:var(--dim);font-size:12px}
-  .rst{width:30px;height:28px;padding:0;color:var(--dim);font-size:14px}
+  .brc{width:32px;height:24px;padding:0;color:var(--dim);font-size:12px}
+  .rst{width:28px;height:24px;padding:0;color:var(--dim);font-size:14px}
   .elapsed.paused{opacity:.5}
-  .branches{margin:2px 0 4px 16px;border-left:1px dashed var(--line);padding-left:8px}
-  .branch{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 6px;margin:4px 0}
+  .branches{margin:1px 0 1px 12px;border-left:1px dashed var(--line);padding-left:6px}
+  .branch{display:flex;flex-wrap:wrap;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 5px;margin:1px 0}
   .branch.done{opacity:.55}
-  .branch .txt input{width:100%;border-color:transparent;background:transparent;padding:3px}
+  .branch .txt input{width:100%;border-color:transparent;background:transparent;padding:1px 3px}
   .branch.done .txt input{text-decoration:line-through;color:var(--dim)}
   .pmenu{position:fixed;z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:4px;min-width:150px}
   .pmenu .ph{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;padding:2px 4px}
@@ -151,6 +152,7 @@
 </head>
 <body>
 
+<div id="top">
 <header>
   <div class="brand">TIMER<b>_</b></div>
   <div class="hbtns">
@@ -170,6 +172,7 @@
 <div class="subbar">
   <button class="next" id="btnNext">next ▸ future</button>
   <span class="count" id="count"></span>
+</div>
 </div>
 
 <div id="list"></div>
@@ -753,12 +756,13 @@ function openStats(){
     <div class="mut" style="font-size:11px;margin-top:12px">completions by weekday (all time)</div>
     <div class="bars">${perDay.map((v,i)=>`<div class="bar"><div class="v">${v||''}</div><div class="b" style="height:${Math.round(100*v/maxD)}%;background:${i===currentDay?'var(--l1)':'var(--l2)'}"></div><div class="l">${DAYLABEL[i][0]}</div></div>`).join("")}</div>
 
-    <div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">clear stats data</button></div>
+    ${!disc?`<div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">clear stats data</button></div>`:''}
     <div class="hint">${disc?`On-time = play within ±${ONTIME_TOL} min of the scheduled hour (unscheduled 50%, late 0%). `:''}Completions & notes stay editable for 24h, then lock in. "Clear stats data" wipes all completions (tasks & notes stay).</div>`);
 }
 document.getElementById("btnStats").onclick=openStats;
 window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";saveSettings();openStats();render();};
 window.clearStats=function(){
+  if(settings.mode==="discipline"){toast("switch to experiment mode to clear");return;}
   if(!confirm("Delete ALL completion / stats data? Your tasks and notes stay. This can't be undone."))return;
   events=[];tasks.forEach(t=>{if(t.level!=="1")t.done="0";});saveEvents();saveTasks();openStats();render();toast("stats data cleared");
 };
