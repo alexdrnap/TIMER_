@@ -138,6 +138,9 @@
   .np{border:1px solid var(--line);border-radius:6px;padding:7px 8px;margin:6px 0;background:var(--panel2)}
   .np .h{color:var(--l2)}
   .note-in{width:100%;min-height:80px;margin-top:6px}
+  .recrow{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .recrow #recBtn.recon{background:#33191a;color:#ffb4b1;border-color:#5a2f2c}
+  .del{color:var(--danger);border-color:#4a2c2c}
   .mbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
   .prime{color:var(--green);border-color:#2c4a38}
   .hint{font-size:11px;color:var(--faint);margin-top:8px}
@@ -184,10 +187,9 @@ let dbDir=null,timerDir=null;
 let tasks=[],events=[],notes=[];
 let currentDay=jsDayToIdx(new Date().getDay());
 let deleteMode=false;
-const doneThisSession=new Set();         // L2/L3 task ids checked this session
-const finalizedDone=new Set();           // L2/L3 done loaded from disk
-const sessionEventIds=new Set();         // event ids created this session (uncheckable)
-const timers=new Map();                  // runKey -> {t0,dur,iv,playedISO}
+const DAY_MS=24*3600*1000;                // stats/notes stay editable for 24h, then lock
+let audioDir=null;                        // TIMER/audio_logs handle (voice notes)
+const timers=new Map();                  // runKey -> {t0,dur,before,paused,iv,playedISO}
 let audioEl=null,activeKey=null,audioPrimed=false,customBuf=null,alarmURL=null;
 
 /* ---------- date helpers ---------- */
@@ -249,19 +251,22 @@ async function loadAll(){
   const tt=await readFile(timerDir,TASKS_CSV);tasks=tt?parseCSV(tt).map(normTask):[];
   const et=await readFile(timerDir,EVENTS_CSV);events=et?parseCSV(et):[];
   const nt=await readFile(timerDir,NOTES_CSV);notes=nt?parseCSV(nt):[];
-  finalizedDone.clear();doneThisSession.clear();sessionEventIds.clear();
-  tasks.forEach(t=>{if(t.level!=="1"&&t.done==="1")finalizedDone.add(t.id);});
+  events.forEach(e=>{if(!e.created)e.created=e.played_at||(e.date?e.date+"T12:00:00":new Date().toISOString());});
   render();
 }
+function mutable(ms){return isFinite(ms) && (Date.now()-ms)<DAY_MS;}      // editable within 24h, then permanent
+function eventMutable(e){return e&&mutable(Date.parse(e.created||""));}
+function noteMutable(n){return n&&mutable(Date.parse((n.date||"")+"T"+(n.time||"00:00:00")));}
 function normTask(o){return{id:o.id||uid(),parent:o.parent||"",level:(o.level==="1"||o.level==="2"||o.level==="3")?o.level:(o.parent?"":"3"),
   text:o.text||"",date:o.date||"",hour:o.hour||"",dur:o.dur||"",done:o.done==="1"?"1":"0",
   sort:o.sort||"0",created:o.created||new Date().toISOString()};}
 const TASK_H=["id","parent","level","text","date","hour","dur","done","sort","created"];
-const EVT_H =["id","task_id","level","date","scheduled","played_at","on_time","elapsed_sec"];
-const NOTE_H=["id","task_id","task_text","level","date","time","note"];
+const EVT_H =["id","task_id","level","date","scheduled","played_at","on_time","elapsed_sec","created"];
+const NOTE_H=["id","task_id","task_text","level","date","time","note","audio"];
 async function saveTasks(){if(timerDir)await writeFile(timerDir,TASKS_CSV,toCSV(TASK_H,tasks));}
 async function saveEvents(){if(timerDir)await writeFile(timerDir,EVENTS_CSV,toCSV(EVT_H,events));}
 async function saveNotes(){if(timerDir)await writeFile(timerDir,NOTES_CSV,toCSV(NOTE_H,notes));}
+async function getAudioDir(){if(!timerDir)return null;if(!audioDir)audioDir=await timerDir.getDirectoryHandle("audio_logs",{create:true});return audioDir;}
 
 /* ---------- sound + media session ----------
    The alarm is baked as ONE media file = [silence for the remaining time] + [5s beep].
@@ -391,21 +396,17 @@ function markDone(id,date){
   else if(played){const p=new Date(played),s=new Date(date+"T"+t.hour+":00");onTime=Math.abs((p-s)/60000)<=ONTIME_TOL?"1":"0";}
   else{onTime="";}
   if(!eventFor(id,date)){
-    const ev={id:uid(),task_id:id,level:t.level,date,scheduled:sched,played_at:played,on_time:onTime,elapsed_sec:String(elapsed)};
-    events.push(ev);sessionEventIds.add(ev.id);saveEvents();
+    const ev={id:uid(),task_id:id,level:t.level,date,scheduled:sched,played_at:played,on_time:onTime,elapsed_sec:String(elapsed),created:new Date().toISOString()};
+    events.push(ev);saveEvents();
   }
-  if(t.level!=="1"){t.done="1";doneThisSession.add(id);saveTasks();}
+  if(t.level!=="1"){t.done="1";saveTasks();}
   render();
 }
 function undone(id,date){
   const t=byId(id);const ev=eventFor(id,date);
-  const l1Today = t.level==="1" && date===todayStr();     // L1 today is always correctable (even after reload)
-  if(!l1Today){
-    if(ev&&!sessionEventIds.has(ev.id))return false;       // finalized -> can't uncheck
-    if(t.level!=="1"&&finalizedDone.has(id))return false;
-  }
-  if(ev){events=events.filter(e=>e!==ev);sessionEventIds.delete(ev.id);saveEvents();}
-  if(t.level!=="1"){t.done="0";doneThisSession.delete(id);saveTasks();}
+  if(ev&&!eventMutable(ev))return false;                    // locked permanent after 24h
+  if(ev){events=events.filter(e=>e!==ev);saveEvents();}
+  if(t.level!=="1"){t.done="0";saveTasks();}
   render();return true;
 }
 
@@ -507,6 +508,7 @@ function hasNote(id){return notes.some(n=>n.task_id===id);}
 function renderTask(t,occDate){
   const key=runKey(t.id,occDate),st=timers.get(key),running=!!st,paused=running&&st.paused;
   const isDone = t.level==="1" ? !!eventFor(t.id,occDate) : t.done==="1";
+  const chkLock = isDone && (()=>{const ev=eventFor(t.id,occDate);return ev&&!eventMutable(ev);})();
   const canPlay = playAllowed(t,occDate);
   const cls=["task","l"+t.level];if(isDone)cls.push("done");if(!isDone&&t.level!=="1"&&isOverdue(t,occDate))cls.push("overdue");
   const wrap=document.createElement("div");
@@ -530,7 +532,7 @@ function renderTask(t,occDate){
       <button class="brc" data-act="branch" data-id="${t.id}" title="add branch">+⑂</button>
       <button class="rst" data-act="reset" data-id="${t.id}" title="clear text / minutes / time">↺</button>
       ${deleteMode?`<button class="xdel" data-act="del" data-id="${t.id}">✕</button>`:''}
-      <span class="chk"><input type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} title="done"></span>
+      <span class="chk"><input type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} ${chkLock?"disabled":""} title="${chkLock?'permanent (24h+)':'done'}"></span>
     </div>`;
   wrap.appendChild(el);
   if(bn){const bc=document.createElement("div");bc.className="branches";
@@ -604,31 +606,75 @@ function closeModal(){modal.classList.remove("on");}
 window.closeModal=closeModal;
 modal.addEventListener("click",e=>{if(e.target===modal)closeModal();});
 
-/* note editor (separate button, no auto-popup) */
+/* ---------- voice notes (mic → TIMER/audio_logs) ---------- */
+let mr=null,recChunks=[],recBlob=null,recExt="webm",recIv=null,logAudio=null;
+function recMime(){for(const[m,e]of[["audio/webm;codecs=opus","webm"],["audio/webm","webm"],["audio/ogg;codecs=opus","ogg"],["audio/mp4","m4a"]])
+  if(window.MediaRecorder&&MediaRecorder.isTypeSupported(m))return{m,e};return{m:"",e:"webm"};}
+function slug(s){return (String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,24))||"task";}
+window.toggleRec=async function(){
+  if(mr&&mr.state==="recording"){mr.stop();return;}
+  if(!navigator.mediaDevices||!window.MediaRecorder){toast("no mic support here");return;}
+  let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}catch(e){toast("mic permission needed");return;}
+  const {m,e}=recMime();recExt=e;recChunks=[];recBlob=null;
+  try{mr=new MediaRecorder(stream,m?{mimeType:m}:undefined);}catch(err){mr=new MediaRecorder(stream);}
+  mr.ondataavailable=ev=>{if(ev.data&&ev.data.size)recChunks.push(ev.data);};
+  mr.onstop=()=>{recBlob=new Blob(recChunks,{type:m||"audio/webm"});stream.getTracks().forEach(x=>x.stop());clearInterval(recIv);recIv=null;updateRecUI();};
+  mr.start();const t0=Date.now();
+  recIv=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);const st=document.getElementById("recStat");if(st)st.textContent="● rec "+s+"s / 30";
+    if(s>=30&&mr.state==="recording")mr.stop();},250);
+  updateRecUI();
+};
+function updateRecUI(){
+  const btn=document.getElementById("recBtn"),st=document.getElementById("recStat"),pv=document.getElementById("recPrev"),cl=document.getElementById("recClr");
+  if(!btn)return;const on=mr&&mr.state==="recording";
+  btn.textContent=on?"■ stop":"🎤 record";btn.classList.toggle("recon",on);
+  if(recBlob&&pv){pv.src=URL.createObjectURL(recBlob);pv.style.display="";if(st)st.textContent="✓ recorded";if(cl)cl.style.display="";}
+  else{if(pv){pv.style.display="none";pv.removeAttribute("src");}if(cl)cl.style.display="none";if(st&&!on)st.textContent="";}
+}
+window.clearRec=function(){recBlob=null;recChunks=[];updateRecUI();};
+window.playAudio=async function(name){try{const dir=await getAudioDir();const f=await(await dir.getFileHandle(name)).getFile();
+  if(!logAudio)logAudio=new Audio();logAudio.src=URL.createObjectURL(f);logAudio.play().catch(()=>{});}catch(e){toast("audio not found");}};
+
+/* note editor (text and/or 30s voice) */
 function openNote(id){
-  const t=byId(id);const prev=notes.filter(n=>n.task_id===id).reverse();
+  const t=byId(id);mr=null;recBlob=null;recChunks=[];const prev=notes.filter(n=>n.task_id===id).reverse();
   openModal(`<h3>note — ${escAttr(t.text||"task")} <span class="x"><button onclick="closeModal()">✕</button></span></h3>
-    <textarea class="note-in" id="noteIn" placeholder="how did it go? (saved with date & time)"></textarea>
+    <textarea class="note-in" id="noteIn" placeholder="how did it go? (text optional)"></textarea>
+    <div class="recrow"><button id="recBtn" onclick="toggleRec()">🎤 record</button><span id="recStat" class="mut"></span><button id="recClr" onclick="clearRec()" style="display:none">clear</button></div>
+    <audio id="recPrev" controls style="display:none;width:100%;margin-top:6px"></audio>
     <div class="mbtns"><button class="prime" onclick="saveNote('${id}')">save note</button></div>
-    ${prev.length?'<div class="hint">earlier notes</div>'+prev.map(n=>`<div class="logdetail">${fmtD(n.date)} ${n.time}\n${escAttr(n.note)}</div>`).join(''):''}`);
+    ${prev.length?'<div class="hint">earlier notes</div>'+prev.map(n=>`<div class="logdetail">${fmtD(n.date)} ${n.time}${n.note?'\n'+escAttr(n.note):''}${n.audio?`\n<button onclick="playAudio('${escAttr(n.audio)}')">▶ audio</button>`:''}</div>`).join(''):''}`);
   setTimeout(()=>{const n=document.getElementById("noteIn");if(n)n.focus();},40);
 }
-window.saveNote=function(id){const t=byId(id);const v=document.getElementById("noteIn").value.trim();if(!v){closeModal();return;}
-  const d=new Date();notes.push({id:uid(),task_id:id,task_text:t.text,level:t.level,date:ymd(d),time:d.toTimeString().slice(0,8),note:v});
-  saveNotes();closeModal();render();};
+window.saveNote=async function(id){
+  const t=byId(id);const v=(document.getElementById("noteIn").value||"").trim();
+  if(!v&&!recBlob){closeModal();return;}
+  const d=new Date();let audioName="";
+  if(recBlob){try{const dir=await getAudioDir();
+    audioName=slug(t.text)+"_"+ymd(d)+"_"+d.toTimeString().slice(0,8).replace(/:/g,"")+"."+recExt;
+    await writeBinary(dir,audioName,await recBlob.arrayBuffer());}catch(e){toast("couldn't save audio");}}
+  notes.push({id:uid(),task_id:id,task_text:t.text,level:t.level,date:ymd(d),time:d.toTimeString().slice(0,8),note:v,audio:audioName});
+  recBlob=null;recChunks=[];saveNotes();closeModal();render();
+};
+window.deleteNote=async function(i){const n=notes[+i];if(!n||!noteMutable(n))return;
+  if(n.audio){try{const dir=await getAudioDir();await dir.removeEntry(n.audio);}catch(e){}}
+  notes=notes.filter(x=>x!==n);saveNotes();openLog();
+};
 
 /* log viewer = notes journal */
-document.getElementById("btnLog").onclick=()=>{
+function openLog(){
   const items=[...notes].reverse();
-  const rows=items.map((n,i)=>`<div class="logrow" data-i="${notes.length-1-i}">
+  const rows=items.map(n=>{const i=notes.indexOf(n);return `<div class="logrow" data-i="${i}">
       <span class="lv lv${n.level}">L${n.level}</span>
-      <div>${escAttr(n.task_text||"(task)")}</div>
-      <div class="when">${fmtD(n.date)} ${n.time}</div></div>`).join("");
+      <div>${escAttr(n.task_text||"(task)")} ${n.audio?'🎙':''}</div>
+      <div class="when">${fmtD(n.date)} ${n.time}</div></div>`;}).join("");
   openModal(`<h3>log (${notes.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
     ${notes.length?rows:'<div class="empty">no notes yet — use ✎ on a task</div>'}<div id="logDet"></div>`);
-  sheet.querySelectorAll(".logrow").forEach(r=>r.onclick=()=>{const n=notes[+r.dataset.i];
-    document.getElementById("logDet").innerHTML=`<div class="logdetail"><b>${escAttr(n.task_text)}</b>  ·  L${n.level}\n${fmtD(n.date)} ${n.time}\n\n${escAttr(n.note)}</div>`;});
-};
+  sheet.querySelectorAll(".logrow").forEach(r=>r.onclick=()=>{const i=+r.dataset.i,n=notes[i];
+    document.getElementById("logDet").innerHTML=`<div class="logdetail"><b>${escAttr(n.task_text)}</b> · L${n.level}\n${fmtD(n.date)} ${n.time}\n\n${n.note?escAttr(n.note):(n.audio?'(voice note)':'')}
+      <div style="margin-top:6px">${n.audio?`<button onclick="playAudio('${escAttr(n.audio)}')">▶ play audio</button> `:''}${noteMutable(n)?`<button class="del" onclick="deleteNote(${i})">delete</button>`:'<span class="mut" style="font-size:10px">permanent (24h+)</span>'}</div></div>`;});
+}
+document.getElementById("btnLog").onclick=openLog;
 
 /* next = future scheduled (level 2, date>today) */
 document.getElementById("btnNext").onclick=()=>{
@@ -706,7 +752,7 @@ document.getElementById("btnStats").onclick=()=>{
 
     <div class="mut" style="font-size:11px;margin-top:12px">completions by weekday (all time)</div>
     <div class="bars">${perDay.map((v,i)=>`<div class="bar"><div class="v">${v||''}</div><div class="b" style="height:${Math.round(100*v/maxD)}%;background:${i===currentDay?'var(--l1)':'var(--l2)'}"></div><div class="l">${DAYLABEL[i][0]}</div></div>`).join("")}</div>
-    <div class="hint">Each completion scores on-time 100% · unscheduled (no hour) 50% · late 0%. Discipline is the level-weighted average (L1×3 L2×2 L3×1). "On-time" tolerance is ±${ONTIME_TOL} min.</div>`);
+    <div class="hint">Each completion scores on-time 100% · unscheduled (no hour) 50% · late 0%. Discipline is the level-weighted average (L1×3 L2×2 L3×1). "On-time" tolerance is ±${ONTIME_TOL} min. Completions & notes stay editable for 24h, then lock in permanently.</div>`);
 };
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
 
