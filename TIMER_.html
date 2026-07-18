@@ -89,6 +89,8 @@
   .empty{color:var(--faint);text-align:center;padding:24px 10px;font-size:12px}
   .dmy{width:104px;text-align:center}
   .brc{width:34px;height:28px;padding:0;color:var(--dim);font-size:12px}
+  .rst{width:30px;height:28px;padding:0;color:var(--dim);font-size:14px}
+  .elapsed.paused{opacity:.5}
   .branches{margin:2px 0 4px 16px;border-left:1px dashed var(--line);padding-left:8px}
   .branch{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 6px;margin:4px 0}
   .branch.done{opacity:.55}
@@ -265,7 +267,12 @@ async function saveNotes(){if(timerDir)await writeFile(timerDir,NOTES_CSV,toCSV(
    The alarm is baked as ONE media file = [silence for the remaining time] + [5s beep].
    It's played on a real <audio> element at PLAY time, so it keeps playing through a screen
    lock (like a music track) and the beep fires at the end even if JS is frozen in background. */
-function getAudio(){if(!audioEl){audioEl=new Audio();audioEl.preload="auto";}return audioEl;}
+function getAudio(){if(!audioEl){audioEl=new Audio();audioEl.preload="auto";
+    audioEl.addEventListener("pause",()=>{                 // if a music app / focus loss pauses us, resume (unless user paused)
+      const st=timers.get(activeKey);
+      if(st&&!st.paused&&!audioEl.ended&&audioEl.currentTime>0)audioEl.play().catch(()=>{});
+    });
+  }return audioEl;}
 function wav8(rate,samples){                 // 8-bit unsigned mono WAV
   const n=samples.length,buf=new Uint8Array(44+n),dv=new DataView(buf.buffer);
   const ws=(o,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(o+i,s.charCodeAt(i));};
@@ -318,26 +325,18 @@ function stopAudio(key){
   if(key&&key!==activeKey)return;const a=getAudio();a.pause();a.currentTime=0;activeKey=null;clearMedia();
   if(alarmURL){URL.revokeObjectURL(alarmURL);alarmURL=null;}
 }
-function pendingToday(){const today=todayStr();
-  return tasks.filter(t=>!t.parent&&( t.level==="1" ? !eventFor(t.id,today) : (t.date===today&&t.done!=="1") ));}
-function nextPending(id){const l=pendingToday();const i=l.findIndex(x=>x.id===id);return i>=0&&l.length>1?l[(i+1)%l.length]:(l[0]&&l[0].id!==id?l[0]:null);}
 function setupMedia(key){
   if(!("mediaSession" in navigator))return;
   const id=key.split("|")[0],t=byId(id);if(!t)return;
-  const nx=nextPending(id);
   try{navigator.mediaSession.metadata=new MediaMetadata({
-    title:t.text||"task",
-    artist:nx?("next ▸ "+(nx.text||"task")):"TIMER_",
-    album:t.parent?"TIMER_ · branch":"TIMER_ · level "+t.level});}catch(e){}
+    title:t.text||"task",artist:"TIMER_",album:t.parent?"branch":"level "+t.level});}catch(e){}
   navigator.mediaSession.playbackState="playing";
   const H=(a,fn)=>{try{navigator.mediaSession.setActionHandler(a,fn);}catch(e){}};
-  const finish=()=>{if(key.endsWith("|b"))toggleBranch(id,true);else markDone(id,key.split("|")[1]);};
-  H("pause",finish);H("stop",finish);H("play",()=>{const a=getAudio();a.play().catch(()=>{});});
-  H("nexttrack",()=>{const nn=nextPending(id);if(nn)play(nn.id,nn.parent?"b":(nn.level==="1"?todayStr():nn.date));});
-  H("previoustrack",()=>{const l=pendingToday(),i=l.findIndex(x=>x.id===id);const pv=l[(i-1+l.length)%l.length];if(pv)play(pv.id,pv.parent?"b":(pv.level==="1"?todayStr():pv.date));});
+  H("play",()=>togglePause(key));H("pause",()=>togglePause(key));    // one button, pause/resume in place
+  ["stop","nexttrack","previoustrack","seekbackward","seekforward","seekto"].forEach(a=>H(a,null));
 }
 function clearMedia(){if(!("mediaSession" in navigator))return;navigator.mediaSession.playbackState="none";
-  ["pause","stop","play","nexttrack","previoustrack"].forEach(a=>{try{navigator.mediaSession.setActionHandler(a,null);}catch(e){}});}
+  ["play","pause","stop","nexttrack","previoustrack"].forEach(a=>{try{navigator.mediaSession.setActionHandler(a,null);}catch(e){}});}
 
 /* ---------- timer ---------- */
 function runKey(id,date){return id+"|"+date;}
@@ -354,16 +353,29 @@ function play(id,date){
   if(!playAllowed(t,date)){toast("starts at "+t.hour);return;}
   primeAudio();
   const dur=(parseFloat(t.dur)||0)*60;
-  const st={t0:Date.now(),dur,iv:null,playedISO:new Date().toISOString()};
+  const st={t0:Date.now(),dur,before:0,paused:false,iv:null,playedISO:new Date().toISOString()};
   st.iv=setInterval(()=>tick(key,st),250);timers.set(key,st);
   if(dur>0)armAudio(key,dur);           // beeps 5s at the end — baked so it fires even when the screen is locked
   render();
 }
+function elapsedOf(st){return Math.floor(st.before+(st.paused?0:(Date.now()-st.t0)/1000));}
+function fmtElapsed(st){const el=elapsedOf(st);return st.dur>0?(el<st.dur?"-"+mmss(st.dur-el):"+"+mmss(el-st.dur)):mmss(el);}
+function togglePause(key){
+  const st=timers.get(key);if(!st)return;
+  if(st.paused){                                   // resume
+    st.t0=Date.now();st.paused=false;st.iv=setInterval(()=>tick(key,st),250);
+    if(key===activeKey&&audioEl)audioEl.play().catch(()=>{});
+    if("mediaSession" in navigator)navigator.mediaSession.playbackState="playing";
+  }else{                                           // pause (in place, no rewind)
+    st.before+=(Date.now()-st.t0)/1000;st.paused=true;clearInterval(st.iv);st.iv=null;
+    if(key===activeKey&&audioEl)audioEl.pause();
+    if("mediaSession" in navigator)navigator.mediaSession.playbackState="paused";
+  }
+  render();
+}
 function tick(key,st){
-  const el=Math.floor((Date.now()-st.t0)/1000);
   const disp=document.querySelector(`.elapsed[data-run="${key}"]`);
-  if(disp){disp.textContent=st.dur>0?(el<st.dur?"-"+mmss(st.dur-el):"+"+mmss(el-st.dur)):mmss(el);
-    disp.classList.toggle("alarm",st.dur>0&&el>=st.dur);}
+  if(disp){disp.textContent=fmtElapsed(st);disp.classList.toggle("alarm",st.dur>0&&elapsedOf(st)>=st.dur);}
 }
 function mmss(s){s=Math.max(0,Math.floor(s));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
 
@@ -373,7 +385,7 @@ function markDone(id,date){
   const t=byId(id);if(!t)return;const key=runKey(id,date);const st=timers.get(key);
   if(st){clearInterval(st.iv);timers.delete(key);}
   stopAudio(key);
-  const played=st?st.playedISO:"";const elapsed=st?Math.floor((Date.now()-st.t0)/1000):0;
+  const played=st?st.playedISO:"";const elapsed=st?elapsedOf(st):0;
   const sched=t.hour?(date+" "+t.hour):date;let onTime;
   if(!t.hour){onTime="half";}                                    // no scheduled hour -> 50% discipline
   else if(played){const p=new Date(played),s=new Date(date+"T"+t.hour+":00");onTime=Math.abs((p-s)/60000)<=ONTIME_TOL?"1":"0";}
@@ -417,6 +429,7 @@ function setLevel(id,lvl){
   if(lvl==="1")t.date=""; else if(lvl==="2"){if(!t.date)t.date=todayStr();} else t.date=todayStr();
   saveTasks();if(lvl!=="1")currentDay=weekdayIdxOf(t.date);render();
 }
+function resetTask(id){const t=byId(id);if(!t)return;t.text="";t.dur="";t.hour="";saveTasks();render();}
 function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;saveTasks();if(field==="date"){currentDay=weekdayIdxOf(val);render();}}
 function toggleBranch(id,checked){
   const t=byId(id);if(!t)return;const key=runKey(id,"b");
@@ -492,7 +505,7 @@ function byTime(a,b){if((a.date||"")!==(b.date||""))return (a.date||"")<(b.date|
 function isOverdue(t,date){return t.done!=="1"&&!eventFor(t.id,date)&&(date<todayStr()||(date===todayStr()&&t.hour&&t.hour<nowHM()));}
 function hasNote(id){return notes.some(n=>n.task_id===id);}
 function renderTask(t,occDate){
-  const key=runKey(t.id,occDate),running=timers.has(key);
+  const key=runKey(t.id,occDate),st=timers.get(key),running=!!st,paused=running&&st.paused;
   const isDone = t.level==="1" ? !!eventFor(t.id,occDate) : t.done==="1";
   const canPlay = playAllowed(t,occDate);
   const cls=["task","l"+t.level];if(isDone)cls.push("done");if(!isDone&&t.level!=="1"&&isOverdue(t,occDate))cls.push("overdue");
@@ -502,9 +515,11 @@ function renderTask(t,occDate){
   const bn=branchesOf(t.id).length;
   el.innerHTML=`
     <div class="row1">
-      <button class="play${running?' running':''}" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||(!running&&!canPlay))?"disabled":""} title="${!canPlay&&t.hour?('starts at '+t.hour):''}">${running?'■':'▶'}</button>
+      ${running
+        ? `<button class="play running" data-act="pause" data-id="${t.id}" data-date="${occDate}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
+        : `<button class="play" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||!canPlay)?"disabled":""} title="${!canPlay&&t.hour?('starts at '+t.hour):''}">▶</button>`}
       <span class="txt"><input data-act="text" data-id="${t.id}" value="${escAttr(t.text)}" placeholder="task…"></span>
-      ${running?`<span class="elapsed" data-run="${key}">${t.dur?'-'+t.dur+':00':'00:00'}</span>`:''}
+      ${running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`:''}
       ${(!isDone&&t.level!=="1"&&isOverdue(t,occDate))?'<span class="tag over">overdue</span>':''}
     </div>
     <div class="row2">
@@ -513,10 +528,9 @@ function renderTask(t,occDate){
       <input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="numeric">
       <button class="note${hasNote(t.id)?' has':''}" data-act="note" data-id="${t.id}" title="log a note">✎</button>
       <button class="brc" data-act="branch" data-id="${t.id}" title="add branch">+⑂</button>
+      <button class="rst" data-act="reset" data-id="${t.id}" title="clear text / minutes / time">↺</button>
       ${deleteMode?`<button class="xdel" data-act="del" data-id="${t.id}">✕</button>`:''}
-      <span class="chk">${running
-        ? `<button class="prime" data-act="finish" data-id="${t.id}" data-date="${occDate}" style="padding:2px 7px">done</button>`
-        : `done <input type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""}>`}</span>
+      <span class="chk"><input type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} title="done"></span>
     </div>`;
   wrap.appendChild(el);
   if(bn){const bc=document.createElement("div");bc.className="branches";
@@ -524,17 +538,19 @@ function renderTask(t,occDate){
   return wrap;
 }
 function renderBranch(b){
-  const key=runKey(b.id,"b"),running=timers.has(key),isDone=b.done==="1",canBranch=branchDepth(b)<6;
+  const key=runKey(b.id,"b"),st=timers.get(key),running=!!st,paused=running&&st.paused,isDone=b.done==="1",canBranch=branchDepth(b)<6;
   const wrap=document.createElement("div");
   const el=document.createElement("div");el.className="branch"+(isDone?" done":"");
   el.innerHTML=`
-    <button class="play${running?' running':''}" data-act="bplay" data-id="${b.id}" ${isDone?"disabled":""}>${running?'■':'▶'}</button>
+    ${running
+      ? `<button class="play running" data-act="bpause" data-id="${b.id}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
+      : `<button class="play" data-act="bplay" data-id="${b.id}" ${isDone?"disabled":""}>▶</button>`}
     <span class="txt"><input data-act="btext" data-id="${b.id}" value="${escAttr(b.text)}" placeholder="branch…"></span>
     <input class="dur" data-act="dur" data-id="${b.id}" value="${escAttr(b.dur)}" placeholder="min" inputmode="numeric">
-    ${running?`<span class="elapsed" data-run="${key}">${b.dur?'-'+b.dur+':00':'00:00'}</span>`:''}
+    ${running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`:''}
     <button class="brc" data-act="branch" data-id="${b.id}" title="add sub-branch" ${canBranch?'':'disabled'}>+⑂</button>
     ${deleteMode?`<button class="xdel" data-act="del" data-id="${b.id}">✕</button>`:''}
-    <span class="chk">done <input type="checkbox" data-act="bdone" data-id="${b.id}" ${isDone?"checked":""}></span>`;
+    <span class="chk"><input type="checkbox" data-act="bdone" data-id="${b.id}" ${isDone?"checked":""} title="done"></span>`;
   wrap.appendChild(el);
   const kids=branchesOf(b.id);
   if(kids.length){const bc=document.createElement("div");bc.className="branches";kids.forEach(k=>bc.appendChild(renderBranch(k)));wrap.appendChild(bc);}
@@ -550,9 +566,11 @@ const listEl=document.getElementById("list");
 listEl.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;
   const id=b.dataset.id,date=b.dataset.date,act=b.dataset.act;
   if(act==="play")play(id,date);
+  if(act==="pause")togglePause(runKey(id,date));
   if(act==="bplay")play(id,"b");
+  if(act==="bpause")togglePause(runKey(id,"b"));
   if(act==="del")deleteTask(id);
-  if(act==="finish")markDone(id,date);
+  if(act==="reset")resetTask(id);
   if(act==="note")openNote(id);
   if(act==="branch")addBranch(id);
 });
