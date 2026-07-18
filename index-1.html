@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TIMER_</title>
+<meta name="theme-color" content="#0e0f12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TIMER_">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#0e0f12; --panel:#16181d; --panel2:#1b1e25; --line:#24272e;
+    --ink:#d7dae0; --dim:#7d838f; --faint:#4a4f59;
+    --l1:#e0a52b;   /* level 1 - daily anchor (amber) */
+    --l2:#4a9fe0;   /* level 2 - scheduled (blue) */
+    --l3:#8a8f9a;   /* level 3 - quick/volatile (grey) */
+    --green:#4bbf7a; --danger:#d9534f;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:13px;line-height:1.35}
+  body{padding-bottom:40px}
+  button{font-family:inherit;font-size:12px;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:5px;padding:5px 8px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.35;cursor:default}
+  input,textarea,select{font-family:inherit;font-size:12px;color:var(--ink);
+    background:#101217;border:1px solid var(--line);border-radius:5px;padding:5px 6px}
+  input:focus,textarea:focus{outline:1px solid var(--l2);border-color:var(--l2)}
+  .mut{color:var(--dim)}
+
+  header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);
+    padding:7px 8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .brand{font-weight:700;letter-spacing:1px;font-size:15px}
+  .brand b{color:var(--l1)}
+  .hbtns{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto;align-items:center}
+  .conn{color:var(--dim);font-size:11px}.conn.ok{color:var(--green)}
+  .add{color:var(--green);border-color:#2c4a38}
+  .del{color:var(--danger);border-color:#4a2c2c}.del.on{background:#33191a;color:#ffb4b1}
+
+  .tabs{display:flex;gap:3px;padding:6px 8px 0;overflow-x:auto;border-bottom:1px solid var(--line)}
+  .tab{flex:0 0 auto;padding:6px 9px;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;
+    background:var(--panel);color:var(--dim);font-size:12px;position:relative;top:1px;white-space:nowrap}
+  .tab.active{background:var(--panel2);color:var(--ink)}
+  .tab small{display:block;font-size:9px;color:var(--faint)}
+  .tab.today small{color:var(--l2)}
+
+  .subbar{display:flex;align-items:center;gap:8px;padding:6px 8px}
+  .subbar .next{color:var(--l1);border-color:#4a3a1c}
+  .count{color:var(--dim);font-size:11px}
+
+  #list{padding:2px 8px 8px}
+  .grp{margin:10px 0 2px;font-size:10px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase;
+    display:flex;align-items:center;gap:6px}
+  .grp .dot{width:7px;height:7px;border-radius:2px}
+  .grp.l1 .dot{background:var(--l1)} .grp.l2 .dot{background:var(--l2)} .grp.l3 .dot{background:var(--l3)}
+
+  .task{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 7px;margin:5px 0;position:relative}
+  .task.l1{border-left:3px solid var(--l1)} .task.l2{border-left:3px solid var(--l2)} .task.l3{border-left:3px solid var(--l3)}
+  .task.done{opacity:.6}
+  .task.overdue:not(.done){border-color:#5a2f2c}
+  .row1{display:flex;align-items:center;gap:6px}
+  .txt{flex:1;min-width:0}
+  .txt input{width:100%;border-color:transparent;background:transparent;padding:4px}
+  .task.done .txt input{text-decoration:line-through;color:var(--dim)}
+  .play{flex:0 0 auto;width:30px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--l2);border-color:#243b4d;font-size:13px;padding:0}
+  .play.running{color:var(--bg);background:var(--l2);border-color:var(--l2);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.55}}
+  .elapsed{font-variant-numeric:tabular-nums;color:var(--l2);font-size:12px;min-width:52px;text-align:right}
+  .elapsed.alarm{color:var(--l1);animation:pulse .7s infinite}
+
+  .row2{display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap}
+  .row2 input[type=date]{width:118px}
+  .row2 input[type=time]{width:78px}
+  .dur{width:44px;text-align:center}
+  .daily{font-size:11px;color:var(--l1);border:1px solid #4a3a1c;border-radius:4px;padding:2px 6px}
+  .note{width:30px;height:28px;padding:0;color:var(--dim);font-size:13px}
+  .note.has{color:var(--l1);border-color:#4a3a1c}
+  .xdel{width:28px;height:28px;padding:0;color:var(--danger);font-size:13px}
+  .chk{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--dim);margin-left:auto}
+  .chk input{width:16px;height:16px;accent-color:var(--green)}
+  .tag{font-size:10px;border-radius:4px;padding:0 4px}
+  .tag.over{color:#ff9b96;border:1px solid #5a2f2c}
+  .empty{color:var(--faint);text-align:center;padding:24px 10px;font-size:12px}
+  .dmy{width:104px;text-align:center}
+  .brc{width:34px;height:28px;padding:0;color:var(--dim);font-size:12px}
+  .branches{margin:2px 0 4px 16px;border-left:1px dashed var(--line);padding-left:8px}
+  .branch{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 6px;margin:4px 0}
+  .branch.done{opacity:.55}
+  .branch .txt input{width:100%;border-color:transparent;background:transparent;padding:3px}
+  .branch.done .txt input{text-decoration:line-through;color:var(--dim)}
+  .pmenu{position:fixed;z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:4px;min-width:150px}
+  .pmenu .ph{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;padding:2px 4px}
+  .pmenu button{text-align:left}
+  .pmenu .p1{border-left:3px solid var(--l1)} .pmenu .p2{border-left:3px solid var(--l2)} .pmenu .p3{border-left:3px solid var(--l3)}
+  .pmenu .sel{background:#0f1620;outline:1px solid var(--l2)}
+  .pmenu #pmDate{margin:2px 0}
+  .pmenu #pmClose{margin-top:4px;color:var(--dim)}
+  #toast{position:fixed;left:50%;bottom:58px;transform:translateX(-50%);background:rgba(0,0,0,.85);border:1px solid var(--line);color:var(--ink);padding:7px 12px;border-radius:8px;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:70;white-space:nowrap}
+  #toast.on{opacity:1}
+  .l1row{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:5px 2px}
+  .l1t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+  .l1w{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+  .wd{width:9px;height:9px;border-radius:2px;background:#2a2e36;display:inline-block}
+  .wd.on{background:var(--l1)} .wd.td{outline:1px solid var(--l2);outline-offset:1px}
+  .l1c{font-size:11px;color:var(--dim);margin-left:5px;font-variant-numeric:tabular-nums} .l1c.ok{color:var(--green)}
+  .l1o{font-size:11px;color:var(--l2);margin-left:6px;min-width:32px;text-align:right}
+  .l1s{font-size:11px;color:var(--dim);margin-left:6px}
+
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:50;align-items:flex-start;justify-content:center;padding:26px 10px;overflow:auto}
+  .modal.on{display:flex}
+  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:100%;max-width:460px;padding:12px}
+  .sheet h3{margin:0 0 8px;font-size:14px;letter-spacing:.5px}
+  .sheet h3 .x{float:right}
+  .addbtn{display:flex;gap:8px;flex-direction:column}
+  .addbtn button{text-align:left;padding:10px;font-size:13px}
+  .addbtn .k{font-weight:700} .addbtn .d{color:var(--dim);font-size:11px}
+  .a1{border-left:3px solid var(--l1)} .a2{border-left:3px solid var(--l2)} .a3{border-left:3px solid var(--l3)}
+  .logrow{border:1px solid var(--line);border-radius:6px;padding:7px 8px;margin:6px 0;background:var(--panel2);cursor:pointer}
+  .logrow .when{color:var(--dim);font-size:11px}
+  .logrow .lv{float:right;font-size:10px}
+  .lv1{color:var(--l1)} .lv2{color:var(--l2)} .lv3{color:var(--l3)}
+  .logdetail{white-space:pre-wrap;background:#101217;border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:6px;font-size:12px}
+  .stat{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 2px}
+  .stat b{font-variant-numeric:tabular-nums}
+  .lvhead{margin:12px 2px 4px;font-size:11px;letter-spacing:.5px}
+  .bars{display:flex;align-items:flex-end;gap:4px;height:76px;margin:10px 2px 4px}
+  .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:flex-end;height:100%}
+  .bar .b{width:100%;border-radius:3px 3px 0 0;min-height:2px;background:var(--l2)}
+  .bar .l,.bar .v{font-size:9px;color:var(--dim)}
+  .np{border:1px solid var(--line);border-radius:6px;padding:7px 8px;margin:6px 0;background:var(--panel2)}
+  .np .h{color:var(--l2)}
+  .note-in{width:100%;min-height:80px;margin-top:6px}
+  .mbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
+  .prime{color:var(--green);border-color:#2c4a38}
+  .hint{font-size:11px;color:var(--faint);margin-top:8px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">TIMER<b>_</b></div>
+  <div class="hbtns">
+    <button id="btnLog">▤ log</button>
+    <button id="btnStats">▦ stats</button>
+    <button id="btnAdd" class="add">＋ task</button>
+    <button id="btnDel" class="del">🗑</button>
+    <button id="btnMore" title="data & sound">⋯</button>
+    <button id="btnConnect">connect</button>
+    <button id="btnReload" title="reload">⟳</button>
+    <span id="conn" class="conn">not connected</span>
+  </div>
+</header>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="subbar">
+  <button class="next" id="btnNext">next ▸ future</button>
+  <span class="count" id="count"></span>
+</div>
+
+<div id="list"></div>
+
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+
+<script>
+"use strict";
+/* ---------- constants ---------- */
+const DAYLABEL=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const ONTIME_TOL=5;
+const L1_TARGET=5;                       // level-1 days/week goal
+const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv";
+const SOUND_FILE="timer_sound.wav", BOM="\uFEFF";
+
+/* ---------- state ---------- */
+let dbDir=null,timerDir=null;
+let tasks=[],events=[],notes=[];
+let currentDay=jsDayToIdx(new Date().getDay());
+let deleteMode=false;
+const doneThisSession=new Set();         // L2/L3 task ids checked this session
+const finalizedDone=new Set();           // L2/L3 done loaded from disk
+const sessionEventIds=new Set();         // event ids created this session (uncheckable)
+const timers=new Map();                  // runKey -> {t0,dur,iv,alarmOn,playedISO}
+let audioEl=null,soundURL=null,activeKey=null,audioPrimed=false;
+
+/* ---------- date helpers ---------- */
+function jsDayToIdx(d){return (d+6)%7;}                       // Sun=0 -> Mon=0
+function ymd(dt){return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");}
+function todayStr(){return ymd(new Date());}
+function nowHM(){return new Date().toTimeString().slice(0,5);}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function weekDates(){const d=new Date();const idx=jsDayToIdx(d.getDay());const mon=new Date(d);mon.setDate(d.getDate()-idx);
+  const out=[];for(let i=0;i<7;i++){const x=new Date(mon);x.setDate(mon.getDate()+i);out.push(ymd(x));}return out;}
+function weekdayIdxOf(dateStr){return jsDayToIdx(new Date(dateStr+"T00:00").getDay());}
+function fmtD(iso){if(!iso)return"";const p=iso.split("-");return p.length===3?p[2]+"/"+p[1]+"/"+p[0]:iso;}   // DD/MM/YYYY
+function fmtDM(iso){if(!iso)return"";const p=iso.split("-");return p.length===3?p[2]+"/"+p[1]:iso;}          // DD/MM
+function parseDMY(s){s=(s||"").trim();const m=s.match(/^(\d{1,2})[\/.\- ]?(\d{1,2})[\/.\- ]?(\d{2,4})$/);if(!m)return null;
+  let d=+m[1],mo=+m[2],y=+m[3];if(y<100)y+=2000;if(mo<1||mo>12||d<1||d>31)return null;
+  const dt=new Date(y,mo-1,d);if(dt.getFullYear()!==y||dt.getMonth()!==mo-1||dt.getDate()!==d)return null;return ymd(dt);}
+
+/* ---------- CSV ---------- */
+function csvEscape(v){v=(v==null?"":String(v));return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function toCSV(header,rows){let out=header.join(",")+"\n";for(const r of rows)out+=header.map(h=>csvEscape(r[h])).join(",")+"\n";return BOM+out;}
+function parseCSV(text){
+  if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
+  const rows=[];let f="",row=[],i=0,q=false;
+  while(i<text.length){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i+=2;continue;}q=false;i++;continue;}f+=c;i++;continue;}
+    if(c==='"'){q=true;i++;continue;}
+    if(c===','){row.push(f);f="";i++;continue;}
+    if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(f);rows.push(row);f="";row=[];i++;continue;}
+    f+=c;i++;}
+  if(f.length||row.length){row.push(f);rows.push(row);}
+  if(!rows.length)return[];const head=rows[0];const objs=[];
+  for(let r=1;r<rows.length;r++){if(rows[r].length===1&&rows[r][0]==="")continue;
+    const o={};head.forEach((h,k)=>o[h]=rows[r][k]!==undefined?rows[r][k]:"");objs.push(o);}
+  return objs;
+}
+
+/* ---------- filesystem (desktop: shared folder · phone: private on-device OPFS) ---------- */
+const HAS_FSA = !!window.showDirectoryPicker;
+async function connect(){
+  try{
+    if(HAS_FSA){
+      dbDir=await window.showDirectoryPicker({id:"database",mode:"readwrite"});
+      timerDir=await dbDir.getDirectoryHandle("TIMER",{create:true});
+    }else{
+      if(!(navigator.storage&&navigator.storage.getDirectory)){setConn("no storage",false);
+        alert("This browser can't store files. Update Chrome and try again.");return;}
+      const root=await navigator.storage.getDirectory();               // OPFS — works on Chrome for Android
+      timerDir=await root.getDirectoryHandle("TIMER",{create:true});
+      if(navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+    }
+    await loadAll();await loadSound();primeAudio();
+    setConn(HAS_FSA?"✓ TIMER":"✓ on-device",true);
+  }catch(e){if(e.name!=="AbortError"){console.error(e);setConn("connect failed",false);}}
+}
+async function readFile(dir,name){try{const h=await dir.getFileHandle(name);return await (await h.getFile()).text();}catch(e){return null;}}
+async function writeFile(dir,name,text){const h=await dir.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(text);await w.close();}
+async function writeBinary(dir,name,buf){const h=await dir.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(buf);await w.close();}
+async function loadAll(){
+  const tt=await readFile(timerDir,TASKS_CSV);tasks=tt?parseCSV(tt).map(normTask):[];
+  const et=await readFile(timerDir,EVENTS_CSV);events=et?parseCSV(et):[];
+  const nt=await readFile(timerDir,NOTES_CSV);notes=nt?parseCSV(nt):[];
+  finalizedDone.clear();doneThisSession.clear();sessionEventIds.clear();
+  tasks.forEach(t=>{if(t.level!=="1"&&t.done==="1")finalizedDone.add(t.id);});
+  render();
+}
+function normTask(o){return{id:o.id||uid(),parent:o.parent||"",level:(o.level==="1"||o.level==="2"||o.level==="3")?o.level:(o.parent?"":"3"),
+  text:o.text||"",date:o.date||"",hour:o.hour||"",dur:o.dur||"",done:o.done==="1"?"1":"0",
+  sort:o.sort||"0",created:o.created||new Date().toISOString()};}
+const TASK_H=["id","parent","level","text","date","hour","dur","done","sort","created"];
+const EVT_H =["id","task_id","level","date","scheduled","played_at","on_time","elapsed_sec"];
+const NOTE_H=["id","task_id","task_text","level","date","time","note"];
+async function saveTasks(){if(timerDir)await writeFile(timerDir,TASKS_CSV,toCSV(TASK_H,tasks));}
+async function saveEvents(){if(timerDir)await writeFile(timerDir,EVENTS_CSV,toCSV(EVT_H,events));}
+async function saveNotes(){if(timerDir)await writeFile(timerDir,NOTES_CSV,toCSV(NOTE_H,notes));}
+
+/* ---------- sound + media session (background/lock-screen controls) ---------- */
+function getAudio(){if(!audioEl){audioEl=new Audio();audioEl.loop=true;audioEl.preload="auto";}return audioEl;}
+function beepURL(){                          // 0.4s 880Hz sine WAV data-uri (fallback if timer_sound.wav missing)
+  const sr=8000,n=Math.floor(sr*0.4),buf=new Uint8Array(44+n*2),dv=new DataView(buf.buffer);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,"RIFF");dv.setUint32(4,36+n*2,true);ws(8,"WAVE");ws(12,"fmt ");dv.setUint32(16,16,true);
+  dv.setUint16(20,1,true);dv.setUint16(22,1,true);dv.setUint32(24,sr,true);dv.setUint32(28,sr*2,true);
+  dv.setUint16(32,2,true);dv.setUint16(34,16,true);ws(36,"data");dv.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){const env=Math.min(1,i/200,(n-i)/200);dv.setInt16(44+i*2,Math.sin(2*Math.PI*880*i/sr)*24000*env,true);}
+  let bin="";buf.forEach(b=>bin+=String.fromCharCode(b));return "data:audio/wav;base64,"+btoa(bin);
+}
+async function loadSound(){
+  if(soundURL&&soundURL.startsWith("blob:"))URL.revokeObjectURL(soundURL);
+  soundURL=null;
+  for(const dir of[timerDir,dbDir]){if(!dir)continue;
+    try{const f=await(await dir.getFileHandle(SOUND_FILE)).getFile();soundURL=URL.createObjectURL(f);break;}catch(e){}}
+  if(!soundURL)soundURL=beepURL();
+}
+function primeAudio(){                       // unlock playback on a user gesture so a later alarm can auto-play
+  if(audioPrimed)return;const a=getAudio();a.src=soundURL||beepURL();a.muted=true;
+  a.play().then(()=>{a.pause();a.currentTime=0;a.muted=false;audioPrimed=true;}).catch(()=>{a.muted=false;});
+}
+function startAlarm(key){
+  activeKey=key;const a=getAudio();a.src=soundURL||beepURL();a.loop=true;a.muted=false;a.currentTime=0;
+  a.play().catch(()=>{});setupMedia(key);
+}
+function stopAlarm(key){
+  if(key!==activeKey)return;const a=getAudio();a.pause();a.currentTime=0;activeKey=null;clearMedia();
+  for(const [k,st] of timers){if(st.alarmOn){startAlarm(k);return;}}   // hand over to another ringing timer
+}
+function pendingToday(){const today=todayStr();
+  return tasks.filter(t=>!t.parent&&( t.level==="1" ? !eventFor(t.id,today) : (t.date===today&&t.done!=="1") ));}
+function nextPending(id){const l=pendingToday();const i=l.findIndex(x=>x.id===id);return i>=0&&l.length>1?l[(i+1)%l.length]:(l[0]&&l[0].id!==id?l[0]:null);}
+function setupMedia(key){
+  if(!("mediaSession" in navigator))return;
+  const id=key.split("|")[0],t=byId(id);if(!t)return;
+  const nx=nextPending(id);
+  try{navigator.mediaSession.metadata=new MediaMetadata({
+    title:t.text||"task",
+    artist:nx?("next ▸ "+(nx.text||"task")):"TIMER_",
+    album:t.parent?"TIMER_ · branch":"TIMER_ · level "+t.level});}catch(e){}
+  navigator.mediaSession.playbackState="playing";
+  const H=(a,fn)=>{try{navigator.mediaSession.setActionHandler(a,fn);}catch(e){}};
+  const finish=()=>{const st=timers.get(key);if(st&&st.alarmOn){                 // done only when time's up
+      if(key.endsWith("|b"))toggleBranch(id,true);else markDone(id,key.split("|")[1]);}};
+  H("pause",finish);H("stop",finish);H("play",()=>{const a=getAudio();a.play().catch(()=>{});});
+  H("nexttrack",()=>{const nn=nextPending(id);if(nn)play(nn.id,nn.parent?"b":(nn.level==="1"?todayStr():nn.date));});
+  H("previoustrack",()=>{const l=pendingToday(),i=l.findIndex(x=>x.id===id);const pv=l[(i-1+l.length)%l.length];if(pv)play(pv.id,pv.parent?"b":(pv.level==="1"?todayStr():pv.date));});
+}
+function clearMedia(){if(!("mediaSession" in navigator))return;navigator.mediaSession.playbackState="none";
+  ["pause","stop","play","nexttrack","previoustrack"].forEach(a=>{try{navigator.mediaSession.setActionHandler(a,null);}catch(e){}});}
+
+/* ---------- timer ---------- */
+function runKey(id,date){return id+"|"+date;}
+function playAllowed(t,date){                       // can't start before the scheduled hour
+  if(date==="b")return true;                        // branches have no schedule
+  const today=todayStr();
+  if(!t.hour)return date<=today;                    // no hour set -> allowed today/past
+  if(date>today)return false;
+  if(date<today)return true;                        // overdue -> allowed (doing it late)
+  return nowHM()>=t.hour;                           // same day -> only at/after the hour
+}
+function play(id,date){
+  const t=byId(id);if(!t)return;const key=runKey(id,date);if(timers.has(key))return;
+  if(!playAllowed(t,date)){toast("starts at "+t.hour);return;}
+  primeAudio();
+  const dur=(parseFloat(t.dur)||0)*60;
+  const st={t0:Date.now(),dur,iv:null,alarmOn:false,playedISO:new Date().toISOString()};
+  st.iv=setInterval(()=>tick(key,st),250);timers.set(key,st);
+  if(dur<=0){st.alarmOn=true;startAlarm(key);}
+  render();
+}
+function tick(key,st){
+  const el=Math.floor((Date.now()-st.t0)/1000);
+  if(st.dur>0&&!st.alarmOn&&el>=st.dur){st.alarmOn=true;startAlarm(key);render();}   // time's up -> unlock done
+  const disp=document.querySelector(`.elapsed[data-run="${key}"]`);
+  if(disp){disp.textContent=st.dur>0?(el<st.dur?"-"+mmss(st.dur-el):"+"+mmss(el-st.dur)):mmss(el);disp.classList.toggle("alarm",st.alarmOn);}
+}
+function mmss(s){s=Math.max(0,Math.floor(s));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
+
+/* ---------- done / events ---------- */
+function eventFor(id,date){return events.find(e=>e.task_id===id&&e.date===date);}
+function markDone(id,date){
+  const t=byId(id);if(!t)return;const key=runKey(id,date);const st=timers.get(key);
+  if(st){clearInterval(st.iv);timers.delete(key);}
+  stopAlarm(key);
+  const played=st?st.playedISO:"";const elapsed=st?Math.floor((Date.now()-st.t0)/1000):0;
+  const sched=t.hour?(date+" "+t.hour):date;let onTime;
+  if(!t.hour){onTime="half";}                                    // no scheduled hour -> 50% discipline
+  else if(played){const p=new Date(played),s=new Date(date+"T"+t.hour+":00");onTime=Math.abs((p-s)/60000)<=ONTIME_TOL?"1":"0";}
+  else{onTime="";}
+  if(!eventFor(id,date)){
+    const ev={id:uid(),task_id:id,level:t.level,date,scheduled:sched,played_at:played,on_time:onTime,elapsed_sec:String(elapsed)};
+    events.push(ev);sessionEventIds.add(ev.id);saveEvents();
+  }
+  if(t.level!=="1"){t.done="1";doneThisSession.add(id);saveTasks();}
+  render();
+}
+function undone(id,date){
+  const t=byId(id);const ev=eventFor(id,date);
+  const l1Today = t.level==="1" && date===todayStr();     // L1 today is always correctable (even after reload)
+  if(!l1Today){
+    if(ev&&!sessionEventIds.has(ev.id))return false;       // finalized -> can't uncheck
+    if(t.level!=="1"&&finalizedDone.has(id))return false;
+  }
+  if(ev){events=events.filter(e=>e!==ev);sessionEventIds.delete(ev.id);saveEvents();}
+  if(t.level!=="1"){t.done="0";doneThisSession.delete(id);saveTasks();}
+  render();return true;
+}
+
+/* ---------- task ops ---------- */
+function byId(id){return tasks.find(t=>t.id===id);}
+function branchesOf(id){return tasks.filter(t=>t.parent===id);}
+function addTask(){                                        // new task defaults to level 3
+  const t=normTask({id:uid(),level:"3",text:"",date:todayStr(),hour:"",sort:String(tasks.length)});
+  tasks.push(t);saveTasks();currentDay=weekdayIdxOf(t.date);render();
+  setTimeout(()=>{const el=document.querySelector(`.txt input[data-id="${t.id}"]`);if(el)el.focus();},40);
+}
+function addBranch(parent){
+  if(branchesOf(parent).length>=6)return;
+  const t=normTask({id:uid(),parent,level:"",text:"",sort:String(tasks.length)});
+  tasks.push(t);saveTasks();render();
+  setTimeout(()=>{const el=document.querySelector(`.txt input[data-id="${t.id}"]`);if(el)el.focus();},40);
+}
+function setLevel(id,lvl){
+  const t=byId(id);if(!t||t.parent)return;t.level=lvl;
+  if(lvl==="1")t.date=""; else if(lvl==="2"){if(!t.date)t.date=todayStr();} else t.date=todayStr();
+  saveTasks();if(lvl!=="1")currentDay=weekdayIdxOf(t.date);render();
+}
+function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;saveTasks();if(field==="date"){currentDay=weekdayIdxOf(val);render();}}
+function toggleBranch(id,checked){
+  const t=byId(id);if(!t)return;const key=runKey(id,"b");
+  if(checked){const st=timers.get(key);if(st){clearInterval(st.iv);timers.delete(key);}stopAlarm(key);t.done="1";}
+  else t.done="0";
+  saveTasks();render();
+}
+function deleteTask(id){const t=byId(id);if(!t)return;
+  if(t.level==="1"&&!confirm("Delete a level-1 daily anchor? Its history stays in events/notes."))return;
+  tasks=tasks.filter(x=>x.id!==id&&x.parent!==id);saveTasks();render();}
+
+/* ---------- long-press priority menu ---------- */
+let pMenu=null,pMenuPos={x:0,y:0};
+function closePMenu(){if(pMenu){pMenu.remove();pMenu=null;}}
+function openPriority(id,x,y){pMenuPos={x,y};buildPMenu(id);}
+function buildPMenu(id){
+  closePMenu();const t=byId(id);if(!t||t.parent)return;
+  const m=document.createElement("div");m.className="pmenu";
+  m.innerHTML=`<div class="ph">priority</div>
+    <button class="p1${t.level==="1"?" sel":""}" data-l="1">level 1 · daily</button>
+    <button class="p2${t.level==="2"?" sel":""}" data-l="2">level 2 · scheduled</button>
+    <button class="p3${t.level==="3"?" sel":""}" data-l="3">level 3 · quick</button>
+    <div class="ph">date ${t.level==="2"?"":"· level 2 only"}</div>
+    <input class="dmy" id="pmDate" value="${fmtD(t.date)}" placeholder="dd/mm/yyyy" inputmode="numeric" ${t.level==="2"?"":"disabled"}>
+    <button id="pmClose">close</button>`;
+  document.body.appendChild(m);pMenu=m;
+  const w=m.offsetWidth,h=m.offsetHeight;
+  m.style.left=Math.max(6,Math.min(pMenuPos.x,window.innerWidth-w-6))+"px";
+  m.style.top=Math.max(6,Math.min(pMenuPos.y,window.innerHeight-h-6))+"px";
+  m.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>{setLevel(id,b.dataset.l);buildPMenu(id);});
+  const di=m.querySelector("#pmDate");
+  di.onchange=()=>{const iso=parseDMY(di.value);if(iso)editField(id,"date",iso);di.value=fmtD(byId(id).date);};
+  m.querySelector("#pmClose").onclick=closePMenu;
+}
+document.addEventListener("pointerdown",e=>{if(pMenu&&!e.target.closest(".pmenu"))closePMenu();},true);
+window.addEventListener("scroll",closePMenu,true);
+
+/* ---------- render ---------- */
+function setConn(txt,ok){const c=document.getElementById("conn");c.textContent=txt;c.classList.toggle("ok",!!ok);}
+function renderTabs(){
+  const wk=weekDates(),todayIdx=jsDayToIdx(new Date().getDay()),tabs=document.getElementById("tabs");tabs.innerHTML="";
+  DAYLABEL.forEach((d,i)=>{const b=document.createElement("div");
+    b.className="tab"+(i===currentDay?" active":"")+(i===todayIdx?" today":"");
+    b.innerHTML=d+"<small>"+fmtDM(wk[i])+"</small>";b.onclick=()=>{currentDay=i;render();};tabs.appendChild(b);});
+}
+function render(){
+  renderTabs();
+  const list=document.getElementById("list");list.innerHTML="";
+  document.getElementById("btnDel").classList.toggle("on",deleteMode);
+  const wk=weekDates(),tabDate=wk[currentDay],today=todayStr(),weekEnd=wk[6];
+  // level 3 & 2 that belong on this weekday
+  const inTab=t=>{ if(t.level==="1")return false;
+    if(weekdayIdxOf(t.date)!==currentDay)return false;
+    if(t.date<today)return true;                 // overdue
+    if(t.date<=weekEnd)return true;              // this week
+    return false;};                              // far future -> only in "next"
+  const l3=tasks.filter(t=>t.level==="3"&&inTab(t)).sort(byTime);
+  const l2=tasks.filter(t=>t.level==="2"&&inTab(t)).sort(byTime);
+  const l1=tasks.filter(t=>t.level==="1").sort(byTime);   // daily, every tab
+  let any=l3.length+l2.length+l1.length;
+  if(l3.length){list.appendChild(grp("l3","level 3 · quick"));l3.forEach(t=>list.appendChild(renderTask(t,t.date)));}
+  if(l2.length){list.appendChild(grp("l2","level 2 · scheduled"));l2.forEach(t=>list.appendChild(renderTask(t,t.date)));}
+  if(l1.length){list.appendChild(grp("l1","level 1 · daily anchor"));l1.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
+  if(!any)list.innerHTML='<div class="empty">nothing for '+DAYLABEL[currentDay]+' — hit ＋ task</div>';
+  const fut=tasks.filter(t=>t.level==="2"&&t.date>today).length;
+  document.getElementById("btnNext").textContent="next ▸ "+fut+" future";
+  document.getElementById("count").textContent=any+" shown";
+}
+function grp(cls,label){const d=document.createElement("div");d.className="grp "+cls;d.innerHTML='<span class="dot"></span>'+label;return d;}
+function byTime(a,b){if((a.date||"")!==(b.date||""))return (a.date||"")<(b.date||"")?-1:1;if(a.hour!==b.hour)return a.hour<b.hour?-1:1;return (+a.sort)-(+b.sort);}
+function isOverdue(t,date){return t.done!=="1"&&!eventFor(t.id,date)&&(date<todayStr()||(date===todayStr()&&t.hour&&t.hour<nowHM()));}
+function hasNote(id){return notes.some(n=>n.task_id===id);}
+function renderTask(t,occDate){
+  const key=runKey(t.id,occDate),running=timers.has(key);
+  const isDone = t.level==="1" ? !!eventFor(t.id,occDate) : t.done==="1";
+  const canPlay = playAllowed(t,occDate);
+  const cls=["task","l"+t.level];if(isDone)cls.push("done");if(!isDone&&t.level!=="1"&&isOverdue(t,occDate))cls.push("overdue");
+  const wrap=document.createElement("div");
+  const el=document.createElement("div");el.className=cls.join(" ");el.dataset.tid=t.id;
+  const chip = t.level==="1"?`<span class="daily">daily</span>`:"";       // date is stored, not shown on the pack
+  const bn=branchesOf(t.id).length;
+  el.innerHTML=`
+    <div class="row1">
+      <button class="play${running?' running':''}" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||(!running&&!canPlay))?"disabled":""} title="${!canPlay&&t.hour?('starts at '+t.hour):''}">${running?'■':'▶'}</button>
+      <span class="txt"><input data-act="text" data-id="${t.id}" value="${escAttr(t.text)}" placeholder="task…"></span>
+      ${running?`<span class="elapsed" data-run="${key}">${t.dur?'-'+t.dur+':00':'00:00'}</span>`:''}
+      ${(!isDone&&t.level!=="1"&&isOverdue(t,occDate))?'<span class="tag over">overdue</span>':''}
+    </div>
+    <div class="row2">
+      ${chip}
+      <input type="time" data-act="hour" data-id="${t.id}" value="${t.hour}">
+      <input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="numeric">
+      <button class="note${hasNote(t.id)?' has':''}" data-act="note" data-id="${t.id}" title="log a note">✎</button>
+      <button class="brc" data-act="branch" data-id="${t.id}" title="add branch (max 6)" ${bn>=6?"disabled":""}>+⑂</button>
+      ${deleteMode?`<button class="xdel" data-act="del" data-id="${t.id}">✕</button>`:''}
+      <span class="chk">${running
+        ? `<button class="prime" data-act="finish" data-id="${t.id}" data-date="${occDate}" style="padding:2px 7px">done</button>`
+        : `done <input type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""}>`}</span>
+    </div>`;
+  wrap.appendChild(el);
+  if(bn){const bc=document.createElement("div");bc.className="branches";
+    branchesOf(t.id).forEach(b=>bc.appendChild(renderBranch(b)));wrap.appendChild(bc);}
+  return wrap;
+}
+function renderBranch(b){
+  const key=runKey(b.id,"b"),running=timers.has(key),isDone=b.done==="1";
+  const el=document.createElement("div");el.className="branch"+(isDone?" done":"");
+  el.innerHTML=`
+    <button class="play${running?' running':''}" data-act="bplay" data-id="${b.id}" ${isDone?"disabled":""}>${running?'■':'▶'}</button>
+    <span class="txt"><input data-act="btext" data-id="${b.id}" value="${escAttr(b.text)}" placeholder="branch…"></span>
+    ${running?`<span class="elapsed" data-run="${key}">00:00</span>`:''}
+    ${deleteMode?`<button class="xdel" data-act="del" data-id="${b.id}">✕</button>`:''}
+    <span class="chk">done <input type="checkbox" data-act="bdone" data-id="${b.id}" ${isDone?"checked":""}></span>`;
+  return el;
+}
+function escAttr(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
+let toastTid=null;
+function toast(msg){let el=document.getElementById("toast");
+  if(!el){el=document.createElement("div");el.id="toast";document.body.appendChild(el);}
+  el.textContent=msg;el.classList.add("on");clearTimeout(toastTid);toastTid=setTimeout(()=>el.classList.remove("on"),1600);}
+
+const listEl=document.getElementById("list");
+listEl.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;
+  const id=b.dataset.id,date=b.dataset.date,act=b.dataset.act;
+  if(act==="play")play(id,date);
+  if(act==="bplay")play(id,"b");
+  if(act==="del")deleteTask(id);
+  if(act==="finish")markDone(id,date);
+  if(act==="note")openNote(id);
+  if(act==="branch")addBranch(id);
+});
+listEl.addEventListener("change",e=>{const b=e.target.closest("[data-act]");if(!b)return;
+  const id=b.dataset.id,date=b.dataset.date,act=b.dataset.act;
+  if(act==="text")editField(id,"text",b.value);
+  if(act==="btext")editField(id,"text",b.value);
+  if(act==="date"){const iso=parseDMY(b.value);if(iso)editField(id,"date",iso);else render();}
+  if(act==="hour")editField(id,"hour",b.value);
+  if(act==="dur")editField(id,"dur",b.value.replace(/[^0-9]/g,""));
+  if(act==="done"){ if(b.checked)markDone(id,date); else if(!undone(id,date))b.checked=true; }
+  if(act==="bdone")toggleBranch(id,b.checked);
+});
+
+/* long-press a task card -> priority menu */
+let lpTimer=null,lpXY=null;
+listEl.addEventListener("pointerdown",e=>{
+  const card=e.target.closest(".task");if(!card)return;
+  if(e.target.closest("input,textarea,button,select"))return;   // let controls work normally
+  const id=card.dataset.tid;if(!id)return;
+  lpXY={x:e.clientX,y:e.clientY};
+  lpTimer=setTimeout(()=>{lpTimer=null;openPriority(id,lpXY.x,lpXY.y);},480);
+});
+listEl.addEventListener("pointermove",e=>{if(lpTimer&&lpXY&&(Math.abs(e.clientX-lpXY.x)>12||Math.abs(e.clientY-lpXY.y)>12)){clearTimeout(lpTimer);lpTimer=null;}});
+["pointerup","pointercancel","pointerleave"].forEach(ev=>listEl.addEventListener(ev,()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}}));
+
+/* ---------- modals ---------- */
+const modal=document.getElementById("modal"),sheet=document.getElementById("sheet");
+function openModal(html){sheet.innerHTML=html;modal.classList.add("on");}
+function closeModal(){modal.classList.remove("on");}
+window.closeModal=closeModal;
+modal.addEventListener("click",e=>{if(e.target===modal)closeModal();});
+
+/* note editor (separate button, no auto-popup) */
+function openNote(id){
+  const t=byId(id);const prev=notes.filter(n=>n.task_id===id).reverse();
+  openModal(`<h3>note — ${escAttr(t.text||"task")} <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    <textarea class="note-in" id="noteIn" placeholder="how did it go? (saved with date & time)"></textarea>
+    <div class="mbtns"><button class="prime" onclick="saveNote('${id}')">save note</button></div>
+    ${prev.length?'<div class="hint">earlier notes</div>'+prev.map(n=>`<div class="logdetail">${fmtD(n.date)} ${n.time}\n${escAttr(n.note)}</div>`).join(''):''}`);
+  setTimeout(()=>{const n=document.getElementById("noteIn");if(n)n.focus();},40);
+}
+window.saveNote=function(id){const t=byId(id);const v=document.getElementById("noteIn").value.trim();if(!v){closeModal();return;}
+  const d=new Date();notes.push({id:uid(),task_id:id,task_text:t.text,level:t.level,date:ymd(d),time:d.toTimeString().slice(0,8),note:v});
+  saveNotes();closeModal();render();};
+
+/* log viewer = notes journal */
+document.getElementById("btnLog").onclick=()=>{
+  const items=[...notes].reverse();
+  const rows=items.map((n,i)=>`<div class="logrow" data-i="${notes.length-1-i}">
+      <span class="lv lv${n.level}">L${n.level}</span>
+      <div>${escAttr(n.task_text||"(task)")}</div>
+      <div class="when">${fmtD(n.date)} ${n.time}</div></div>`).join("");
+  openModal(`<h3>log (${notes.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    ${notes.length?rows:'<div class="empty">no notes yet — use ✎ on a task</div>'}<div id="logDet"></div>`);
+  sheet.querySelectorAll(".logrow").forEach(r=>r.onclick=()=>{const n=notes[+r.dataset.i];
+    document.getElementById("logDet").innerHTML=`<div class="logdetail"><b>${escAttr(n.task_text)}</b>  ·  L${n.level}\n${fmtD(n.date)} ${n.time}\n\n${escAttr(n.note)}</div>`;});
+};
+
+/* next = future scheduled (level 2, date>today) */
+document.getElementById("btnNext").onclick=()=>{
+  const today=todayStr();
+  const fut=tasks.filter(t=>t.level==="2"&&t.date>today).sort((a,b)=>(a.date+a.hour)<(b.date+b.hour)?-1:1);
+  const rows=fut.map(t=>`<div class="np"><span class="h">${escAttr(t.text||"task")}</span>
+    <div class="when mut" style="font-size:11px">${fmtD(t.date)} · ${t.hour} · ${DAYLABEL[weekdayIdxOf(t.date)]}${t.dur?' · '+t.dur+'m':''}</div></div>`).join("");
+  openModal(`<h3>next — future scheduled <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    ${fut.length?rows:'<div class="empty">no future level-2 tasks</div>'}
+    <div class="hint">Level-2 tasks dated after today are parked here until their day. Level-1 is daily; level-3 is today-only.</div>`);
+};
+
+/* ---------- statistics (level aware) ---------- */
+document.getElementById("btnStats").onclick=()=>{
+  const wk=weekDates(),today=todayStr();
+  const evL=lv=>events.filter(e=>e.level===lv);
+  const otVal=e=>e.on_time==="1"?1:e.on_time==="half"?0.5:e.on_time==="0"?0:null;   // unscheduled = 0.5
+  const onTimeRate=arr=>{const v=arr.map(otVal).filter(x=>x!==null);return v.length?Math.round(100*v.reduce((a,b)=>a+b,0)/v.length):0;};
+  const wOf=lv=>lv==="1"?3:lv==="2"?2:1;
+
+  // level 1 — days per week
+  const l1=tasks.filter(t=>t.level==="1");
+  let l1sum=0,l1hit=0;
+  l1.forEach(t=>{const days=wk.filter(d=>eventFor(t.id,d)).length;l1sum+=days;if(days>=L1_TARGET)l1hit++;});
+  const l1avg=l1.length?(l1sum/l1.length):0;
+
+  // level 2 — completion
+  const l2=tasks.filter(t=>t.level==="2");
+  const l2done=l2.filter(t=>t.done==="1").length;
+  const l2rate=l2.length?Math.round(100*l2done/l2.length):0;
+
+  // level 3 — volatile throughput
+  const l3done=evL("3").length;
+
+  // discipline = level-weighted average of each completion's on-time value (on-time 100 / unscheduled 50 / late 0)
+  let dNum=0,dDen=0;events.forEach(e=>{const v=otVal(e);if(v===null)return;const w=wOf(e.level);dNum+=w*v;dDen+=w;});
+  const discipline=dDen?Math.round(100*dNum/dDen):0;
+
+  // streak: consecutive days (up to today) where every L1 anchor has an event
+  let streak=0;for(let k=0;k<90;k++){const d=new Date();d.setDate(d.getDate()-k);const ds=ymd(d);
+    if(!l1.length)break;if(l1.every(t=>eventFor(t.id,ds)))streak++;else break;}
+
+  const totalSec=events.reduce((a,e)=>a+(+e.elapsed_sec||0),0);
+  const doneToday=events.filter(e=>e.date===today).length;
+  const perDay=[0,0,0,0,0,0,0];events.forEach(e=>{if(e.date)perDay[weekdayIdxOf(e.date)]++;});
+  const maxD=Math.max(1,...perDay);
+  // per-task level-1 respect list (few tasks, so list each individually)
+  const l1rows = l1.length ? l1.map(t=>{
+      const evs=events.filter(e=>e.task_id===t.id);
+      const cnt=wk.filter(d=>eventFor(t.id,d)).length;
+      const streakT=(()=>{let s=0;for(let k=0;k<90;k++){const dd=new Date();dd.setDate(dd.getDate()-k);if(eventFor(t.id,ymd(dd)))s++;else break;}return s;})();
+      const dots=wk.map(d=>`<span class="wd${eventFor(t.id,d)?' on':''}${d===today?' td':''}"></span>`).join("");
+      return `<div class="l1row"><span class="l1t">${escAttr(t.text||"(unnamed)")}</span>
+        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span><span class="l1o" title="on-time">${onTimeRate(evs)}%</span><span class="l1s" title="streak">🔥${streakT}</span></span></div>`;
+    }).join("") : '<div class="mut" style="font-size:11px;padding:4px 2px">no level-1 anchors yet</div>';
+
+  openModal(`<h3>statistics <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    <div class="stat"><span>Discipline score <span class="mut">(weighted L1·3 L2·2 L3·1)</span></span><b>${discipline}%</b></div>
+    <div class="stat"><span>On-time overall</span><b>${onTimeRate(events)}%</b></div>
+    <div class="stat"><span>Level-1 streak</span><b>${streak} day${streak===1?'':'s'}</b></div>
+    <div class="stat"><span>Finished today</span><b>${doneToday}</b></div>
+    <div class="stat"><span>Total tracked time</span><b>${fmtDur(totalSec)}</b></div>
+
+    <div class="lvhead lv3">▮ level 3 · quick (volatile)</div>
+    <div class="stat"><span>Completed count</span><b>${l3done}</b></div>
+    <div class="stat"><span>On-time</span><b>${onTimeRate(evL("3"))}%</b></div>
+
+    <div class="lvhead lv2">▮ level 2 · scheduled (${l2.length})</div>
+    <div class="stat"><span>Completed</span><b>${l2rate}% <span class="mut">(${l2done}/${l2.length})</span></b></div>
+    <div class="stat"><span>On-time</span><b>${onTimeRate(evL("2"))}%</b></div>
+
+    <div class="lvhead lv1">▮ level 1 · daily anchors — respect per task (${l1hit}/${l1.length} hitting ≥${L1_TARGET} this week)</div>
+    ${l1rows}
+    <div class="hint" style="margin-top:4px">dots = this week Mon→Sun (filled = done, blue outline = today) · X/7 vs goal ≥${L1_TARGET} · % on-time · 🔥 current daily streak</div>
+
+    <div class="mut" style="font-size:11px;margin-top:12px">completions by weekday (all time)</div>
+    <div class="bars">${perDay.map((v,i)=>`<div class="bar"><div class="v">${v||''}</div><div class="b" style="height:${Math.round(100*v/maxD)}%;background:${i===currentDay?'var(--l1)':'var(--l2)'}"></div><div class="l">${DAYLABEL[i][0]}</div></div>`).join("")}</div>
+    <div class="hint">Each completion scores on-time 100% · unscheduled (no hour) 50% · late 0%. Discipline is the level-weighted average (L1×3 L2×2 L3×1). "On-time" tolerance is ±${ONTIME_TOL} min.</div>`);
+};
+function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
+
+/* ---------- data & sound (import sound, back up / restore CSVs) ---------- */
+function pickFile(accept,multiple,cb){const inp=document.createElement("input");inp.type="file";inp.accept=accept;inp.multiple=!!multiple;
+  inp.onchange=()=>{cb(multiple?[...inp.files]:inp.files[0]);};inp.click();}
+window.importSound=function(){ if(!timerDir){toast("connect first");return;}
+  pickFile("audio/*",false,async f=>{if(!f)return;await writeBinary(timerDir,SOUND_FILE,await f.arrayBuffer());await loadSound();toast("sound imported");});};
+function dl(name,text){const b=new Blob([text],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}
+window.exportData=function(){ if(!timerDir){toast("connect first");return;}
+  dl(TASKS_CSV,toCSV(TASK_H,tasks));dl(EVENTS_CSV,toCSV(EVT_H,events));dl(NOTES_CSV,toCSV(NOTE_H,notes));toast("3 CSV files downloaded");};
+window.importData=function(){ if(!timerDir){toast("connect first");return;}
+  pickFile(".csv",true,async files=>{for(const f of files){const txt=await f.text();
+      if(/task/i.test(f.name))await writeFile(timerDir,TASKS_CSV,txt);
+      else if(/event/i.test(f.name))await writeFile(timerDir,EVENTS_CSV,txt);
+      else if(/note/i.test(f.name))await writeFile(timerDir,NOTES_CSV,txt);}
+    await loadAll();toast("data restored");});};
+function openMore(){openModal(`<h3>data & sound <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+  <div class="addbtn">
+    <button onclick="importSound()">♪ import timer sound (.wav)</button>
+    <button onclick="exportData()">⭳ export / back up data (CSV)</button>
+    <button onclick="importData()">⭱ restore data from CSV files</button>
+  </div>
+  <div class="hint">${HAS_FSA
+    ? "On this computer your data lives in the TIMER folder inside the database folder you connect."
+    : "On phone the app stores data <b>privately on-device</b> (not a visible folder). Import your timer sound here, and use export now and then to back it up (downloads to your Downloads folder). Restore moves data from another device."}</div>`);}
+
+/* ---------- header ---------- */
+document.getElementById("btnConnect").onclick=connect;
+document.getElementById("btnMore").onclick=openMore;
+document.getElementById("btnReload").onclick=async()=>{if(!timerDir){connect();return;}await loadAll();await loadSound();};
+document.getElementById("btnAdd").onclick=()=>{if(!timerDir){toast(HAS_FSA?"connect a folder first":"tap start first");return;}addTask();};
+document.getElementById("btnDel").onclick=()=>{deleteMode=!deleteMode;render();};
+if(!HAS_FSA){document.getElementById("btnConnect").textContent="start";document.getElementById("conn").textContent="tap start";}
+
+render();
+// re-render each minute so time-gated play buttons unlock when the hour arrives (skip while typing / menu open)
+setInterval(()=>{const a=document.activeElement;
+  if(timerDir && !pMenu && !modal.classList.contains("on") && !(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")))render();},30000);
+
+/* ---------- PWA: register service worker when hosted over http(s) ---------- */
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>
