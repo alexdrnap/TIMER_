@@ -140,6 +140,9 @@
   .note-in{width:100%;min-height:80px;margin-top:6px}
   .recrow{display:flex;align-items:center;gap:8px;margin-top:8px}
   .recrow #recBtn.recon{background:#33191a;color:#ffb4b1;border-color:#5a2f2c}
+  .modesw{display:flex;margin:2px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;width:fit-content}
+  .modesw button{border:none;border-radius:0;background:var(--panel2);color:var(--dim);padding:6px 14px}
+  .modesw button.sel{background:#0f1620;color:var(--ink);box-shadow:inset 0 -2px 0 var(--l2)}
   .del{color:var(--danger);border-color:#4a2c2c}
   .mbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
   .prime{color:var(--green);border-color:#2c4a38}
@@ -179,12 +182,13 @@
 const DAYLABEL=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const ONTIME_TOL=5;
 const L1_TARGET=5;                       // level-1 days/week goal
-const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv";
+const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv", SETTINGS_CSV="settings.csv";
 const SOUND_FILE="timer_sound.wav", BOM="\uFEFF";
 
 /* ---------- state ---------- */
 let dbDir=null,timerDir=null;
 let tasks=[],events=[],notes=[];
+let settings={mode:"experiment"};        // "experiment" (no discipline stats) | "discipline"
 let currentDay=jsDayToIdx(new Date().getDay());
 let deleteMode=false;
 const DAY_MS=24*3600*1000;                // stats/notes stay editable for 24h, then lock
@@ -252,8 +256,11 @@ async function loadAll(){
   const et=await readFile(timerDir,EVENTS_CSV);events=et?parseCSV(et):[];
   const nt=await readFile(timerDir,NOTES_CSV);notes=nt?parseCSV(nt):[];
   events.forEach(e=>{if(!e.created)e.created=e.played_at||(e.date?e.date+"T12:00:00":new Date().toISOString());});
+  const stx=await readFile(timerDir,SETTINGS_CSV);
+  if(stx){const m=parseCSV(stx).find(r=>r.key==="mode");if(m)settings.mode=(m.value==="discipline")?"discipline":"experiment";}
   render();
 }
+async function saveSettings(){if(timerDir)await writeFile(timerDir,SETTINGS_CSV,toCSV(["key","value"],[{key:"mode",value:settings.mode}]));}
 function mutable(ms){return isFinite(ms) && (Date.now()-ms)<DAY_MS;}      // editable within 24h, then permanent
 function eventMutable(e){return e&&mutable(Date.parse(e.created||""));}
 function noteMutable(n){return n&&mutable(Date.parse((n.date||"")+"T"+(n.time||"00:00:00")));}
@@ -687,72 +694,73 @@ document.getElementById("btnNext").onclick=()=>{
     <div class="hint">Level-2 tasks dated after today are parked here until their day. Level-1 is daily; level-3 is today-only.</div>`);
 };
 
-/* ---------- statistics (level aware) ---------- */
-document.getElementById("btnStats").onclick=()=>{
+/* ---------- statistics ---------- */
+function openStats(){
+  const disc = settings.mode==="discipline";
   const wk=weekDates(),today=todayStr();
   const evL=lv=>events.filter(e=>e.level===lv);
   const otVal=e=>e.on_time==="1"?1:e.on_time==="half"?0.5:e.on_time==="0"?0:null;   // unscheduled = 0.5
   const onTimeRate=arr=>{const v=arr.map(otVal).filter(x=>x!==null);return v.length?Math.round(100*v.reduce((a,b)=>a+b,0)/v.length):0;};
   const wOf=lv=>lv==="1"?3:lv==="2"?2:1;
 
-  // level 1 — days per week
   const l1=tasks.filter(t=>t.level==="1");
-  let l1sum=0,l1hit=0;
-  l1.forEach(t=>{const days=wk.filter(d=>eventFor(t.id,d)).length;l1sum+=days;if(days>=L1_TARGET)l1hit++;});
-  const l1avg=l1.length?(l1sum/l1.length):0;
-
-  // level 2 — completion
+  let l1hit=0;l1.forEach(t=>{const days=wk.filter(d=>eventFor(t.id,d)).length;if(days>=L1_TARGET)l1hit++;});
   const l2=tasks.filter(t=>t.level==="2");
   const l2done=l2.filter(t=>t.done==="1").length;
   const l2rate=l2.length?Math.round(100*l2done/l2.length):0;
-
-  // level 3 — volatile throughput
   const l3done=evL("3").length;
 
-  // discipline = level-weighted average of each completion's on-time value (on-time 100 / unscheduled 50 / late 0)
   let dNum=0,dDen=0;events.forEach(e=>{const v=otVal(e);if(v===null)return;const w=wOf(e.level);dNum+=w*v;dDen+=w;});
   const discipline=dDen?Math.round(100*dNum/dDen):0;
 
-  // streak: consecutive days (up to today) where every L1 anchor has an event
   let streak=0;for(let k=0;k<90;k++){const d=new Date();d.setDate(d.getDate()-k);const ds=ymd(d);
     if(!l1.length)break;if(l1.every(t=>eventFor(t.id,ds)))streak++;else break;}
-
   const totalSec=events.reduce((a,e)=>a+(+e.elapsed_sec||0),0);
   const doneToday=events.filter(e=>e.date===today).length;
   const perDay=[0,0,0,0,0,0,0];events.forEach(e=>{if(e.date)perDay[weekdayIdxOf(e.date)]++;});
   const maxD=Math.max(1,...perDay);
-  // per-task level-1 respect list (few tasks, so list each individually)
+
   const l1rows = l1.length ? l1.map(t=>{
       const evs=events.filter(e=>e.task_id===t.id);
       const cnt=wk.filter(d=>eventFor(t.id,d)).length;
       const streakT=(()=>{let s=0;for(let k=0;k<90;k++){const dd=new Date();dd.setDate(dd.getDate()-k);if(eventFor(t.id,ymd(dd)))s++;else break;}return s;})();
       const dots=wk.map(d=>`<span class="wd${eventFor(t.id,d)?' on':''}${d===today?' td':''}"></span>`).join("");
       return `<div class="l1row"><span class="l1t">${escAttr(t.text||"(unnamed)")}</span>
-        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span><span class="l1o" title="on-time">${onTimeRate(evs)}%</span><span class="l1s" title="streak">🔥${streakT}</span></span></div>`;
+        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span>${disc?`<span class="l1o" title="on-time">${onTimeRate(evs)}%</span>`:''}<span class="l1s" title="streak">🔥${streakT}</span></span></div>`;
     }).join("") : '<div class="mut" style="font-size:11px;padding:4px 2px">no level-1 anchors yet</div>';
 
   openModal(`<h3>statistics <span class="x"><button onclick="closeModal()">✕</button></span></h3>
-    <div class="stat"><span>Discipline score <span class="mut">(weighted L1·3 L2·2 L3·1)</span></span><b>${discipline}%</b></div>
-    <div class="stat"><span>On-time overall</span><b>${onTimeRate(events)}%</b></div>
+    <div class="modesw"><button class="${disc?'':'sel'}" onclick="setMode('experiment')">experiment</button><button class="${disc?'sel':''}" onclick="setMode('discipline')">discipline</button></div>
+    <div class="hint" style="margin:0 0 6px">${disc?'Discipline mode — playing on the scheduled time builds your score.':'Experiment mode — no discipline score; free to test the app.'}</div>
+    ${disc?`<div class="stat"><span>Discipline score <span class="mut">(weighted L1·3 L2·2 L3·1)</span></span><b>${discipline}%</b></div>
+    <div class="stat"><span>On-time overall</span><b>${onTimeRate(events)}%</b></div>`:''}
     <div class="stat"><span>Level-1 streak</span><b>${streak} day${streak===1?'':'s'}</b></div>
     <div class="stat"><span>Finished today</span><b>${doneToday}</b></div>
     <div class="stat"><span>Total tracked time</span><b>${fmtDur(totalSec)}</b></div>
 
     <div class="lvhead lv3">▮ level 3 · quick (volatile)</div>
     <div class="stat"><span>Completed count</span><b>${l3done}</b></div>
-    <div class="stat"><span>On-time</span><b>${onTimeRate(evL("3"))}%</b></div>
+    ${disc?`<div class="stat"><span>On-time</span><b>${onTimeRate(evL("3"))}%</b></div>`:''}
 
     <div class="lvhead lv2">▮ level 2 · scheduled (${l2.length})</div>
     <div class="stat"><span>Completed</span><b>${l2rate}% <span class="mut">(${l2done}/${l2.length})</span></b></div>
-    <div class="stat"><span>On-time</span><b>${onTimeRate(evL("2"))}%</b></div>
+    ${disc?`<div class="stat"><span>On-time</span><b>${onTimeRate(evL("2"))}%</b></div>`:''}
 
-    <div class="lvhead lv1">▮ level 1 · daily anchors — respect per task (${l1hit}/${l1.length} hitting ≥${L1_TARGET} this week)</div>
+    <div class="lvhead lv1">▮ level 1 · daily anchors (${l1hit}/${l1.length} hitting ≥${L1_TARGET} this week)</div>
     ${l1rows}
-    <div class="hint" style="margin-top:4px">dots = this week Mon→Sun (filled = done, blue outline = today) · X/7 vs goal ≥${L1_TARGET} · % on-time · 🔥 current daily streak</div>
+    <div class="hint" style="margin-top:4px">dots = this week Mon→Sun (filled = done, blue outline = today) · X/7 vs goal ≥${L1_TARGET}${disc?' · % on-time':''} · 🔥 current daily streak</div>
 
     <div class="mut" style="font-size:11px;margin-top:12px">completions by weekday (all time)</div>
     <div class="bars">${perDay.map((v,i)=>`<div class="bar"><div class="v">${v||''}</div><div class="b" style="height:${Math.round(100*v/maxD)}%;background:${i===currentDay?'var(--l1)':'var(--l2)'}"></div><div class="l">${DAYLABEL[i][0]}</div></div>`).join("")}</div>
-    <div class="hint">Each completion scores on-time 100% · unscheduled (no hour) 50% · late 0%. Discipline is the level-weighted average (L1×3 L2×2 L3×1). "On-time" tolerance is ±${ONTIME_TOL} min. Completions & notes stay editable for 24h, then lock in permanently.</div>`);
+
+    <div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">clear stats data</button></div>
+    <div class="hint">${disc?`On-time = play within ±${ONTIME_TOL} min of the scheduled hour (unscheduled 50%, late 0%). `:''}Completions & notes stay editable for 24h, then lock in. "Clear stats data" wipes all completions (tasks & notes stay).</div>`);
+}
+document.getElementById("btnStats").onclick=openStats;
+window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";saveSettings();openStats();render();};
+window.clearStats=function(){
+  if(!confirm("Delete ALL completion / stats data? Your tasks and notes stay. This can't be undone."))return;
+  events=[];tasks.forEach(t=>{if(t.level!=="1")t.done="0";});saveEvents();saveTasks();openStats();render();toast("stats data cleared");
 };
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
 
