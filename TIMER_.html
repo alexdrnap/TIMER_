@@ -43,6 +43,7 @@
   .conn{color:var(--dim);font-size:11px}.conn.ok{color:var(--green)}
   .add{color:var(--green);border-color:#2c4a38}
   .del{color:var(--danger);border-color:#4a2c2c}.del.on{background:#33191a;color:#ffb4b1}
+  #btnLvl.on{background:#0f1620;color:var(--ink);outline:1px solid var(--l2)}
 
   .tabs{display:flex;gap:3px;padding:2px 6px 0;overflow-x:auto;border-bottom:1px solid var(--line)}
   .tab{flex:0 0 auto;padding:3px 9px;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;
@@ -54,6 +55,9 @@
   .subbar{display:flex;align-items:center;gap:8px;padding:3px 6px}
   .subbar .next{color:var(--l1);border-color:#4a3a1c;padding:3px 8px}
   .count{color:var(--dim);font-size:11px}
+  .tickctl{margin-left:auto;display:flex;align-items:center;gap:3px;font-size:11px;color:var(--dim)}
+  .tickctl input{width:15px;height:15px;accent-color:var(--l2)}
+  .tickvol{padding:1px 3px;font-size:11px}
 
   #list{padding:1px 6px 40px}
   .grp{margin:3px 0 1px;font-size:10px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase;
@@ -61,39 +65,45 @@
   .grp .dot{width:7px;height:7px;border-radius:2px}
   .grp.l1 .dot{background:var(--l1)} .grp.l2 .dot{background:var(--l2)} .grp.l3 .dot{background:var(--l3)}
 
-  .task{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 5px;margin:1px 0;position:relative}
+  .task{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 4px;margin:1px 0;position:relative;overflow:hidden}
   .task.l1{border-left:3px solid var(--l1)} .task.l2{border-left:3px solid var(--l2)} .task.l3{border-left:3px solid var(--l3)}
+  .task.mode-timer{box-shadow:inset -3px 0 0 rgba(75,191,122,.55)}    /* timer = green edge */
+  .task.mode-sw{box-shadow:inset -3px 0 0 rgba(217,83,79,.55)}        /* stopwatch = red edge */
   .task.done{opacity:.6}
   .task.overdue:not(.done){border-color:#5a2f2c}
-  .row1{display:flex;align-items:center;gap:5px}
-  .txt{flex:1;min-width:0}
-  .txt input{width:100%;border-color:transparent;background:transparent;padding:1px 3px}
-  .task.done .txt input{text-decoration:line-through;color:var(--dim)}
-  .play{flex:0 0 auto;width:28px;height:24px;display:flex;align-items:center;justify-content:center;color:var(--l2);border-color:#243b4d;font-size:13px;padding:0}
+  .task.dragging,.branch.dragging{outline:1px dashed var(--l2);opacity:.85;background:#12202b}
+  #list.dragging{touch-action:none;user-select:none}
+  .row{display:flex;align-items:center;gap:4px;flex-wrap:nowrap}
+  .txt{flex:1 1 40px;min-width:24px}
+  .txt input{width:100%;border-color:transparent;background:transparent;padding:1px 3px;-webkit-user-select:none;-webkit-touch-callout:none}
+  .task.done .txt input,.branch.done .txt input{text-decoration:line-through;color:var(--dim)}
+  .ck{flex:0 0 auto;width:16px;height:16px;accent-color:var(--green)}
+  .exp{flex:0 0 auto;width:15px;height:22px;padding:0;border:none;background:transparent;color:var(--dim);font-size:11px}
+  .play{flex:0 0 auto;width:26px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--l2);border-color:#243b4d;font-size:12px;padding:0}
   .play.running{color:var(--bg);background:var(--l2);border-color:var(--l2);animation:pulse 1s infinite}
   @keyframes pulse{50%{opacity:.55}}
-  .elapsed{font-variant-numeric:tabular-nums;color:var(--l2);font-size:12px;min-width:52px;text-align:right}
+  .elapsed{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--l2);font-size:11px;text-align:right}
   .elapsed.alarm{color:var(--l1);animation:pulse .7s infinite}
-
-  .row2{display:flex;align-items:center;gap:5px;margin-top:1px;flex-wrap:wrap}
-  .row2 input[type=date]{width:118px}
-  .row2 input[type=time]{width:74px}
-  .dur{width:42px;text-align:center}
-  .daily{font-size:11px;color:var(--l1);border:1px solid #4a3a1c;border-radius:4px;padding:1px 6px}
-  .note{width:28px;height:24px;padding:0;color:var(--dim);font-size:13px}
+  .elapsed.sw{color:var(--dim);opacity:.85}
+  .elapsed.paused{opacity:.5}
+  .hr{flex:0 0 auto;width:46px;text-align:center;padding:1px 2px}
+  .dur{flex:0 0 auto;width:36px;text-align:center;padding:1px 2px}
+  .note{flex:0 0 auto;width:24px;height:22px;padding:0;color:var(--dim);font-size:12px}
   .note.has{color:var(--l1);border-color:#4a3a1c}
-  .xdel{width:26px;height:24px;padding:0;color:var(--danger);font-size:13px}
-  .chk{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--dim);margin-left:auto}
-  .chk input{width:16px;height:16px;accent-color:var(--green)}
+  .brc{flex:0 0 auto;width:26px;height:22px;padding:0;color:var(--dim);font-size:11px}
+  .rst{flex:0 0 auto;width:24px;height:22px;padding:0;color:var(--dim);font-size:13px}
+  .xdel{flex:0 0 auto;width:24px;height:22px;padding:0;color:var(--danger);font-size:12px}
+  .lvlpick{flex:0 0 auto;display:flex;gap:2px}
+  .lp{width:20px;height:22px;padding:0;font-size:11px;color:var(--dim)}
+  .lp1.on{color:var(--bg);background:var(--l1);border-color:var(--l1)}
+  .lp2.on{color:var(--bg);background:var(--l2);border-color:var(--l2)}
+  .lp3.on{color:var(--bg);background:var(--l3);border-color:var(--l3)}
   .tag{font-size:10px;border-radius:4px;padding:0 4px}
   .tag.over{color:#ff9b96;border:1px solid #5a2f2c}
   .empty{color:var(--faint);text-align:center;padding:24px 10px;font-size:12px}
   .dmy{width:104px;text-align:center}
-  .brc{width:32px;height:24px;padding:0;color:var(--dim);font-size:12px}
-  .rst{width:28px;height:24px;padding:0;color:var(--dim);font-size:14px}
-  .elapsed.paused{opacity:.5}
   .branches{margin:1px 0 1px 12px;border-left:1px dashed var(--line);padding-left:6px}
-  .branch{display:flex;flex-wrap:wrap;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 5px;margin:1px 0}
+  .branch{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 4px;margin:1px 0;overflow:hidden}
   .branch.done{opacity:.55}
   .branch .txt input{width:100%;border-color:transparent;background:transparent;padding:1px 3px}
   .branch.done .txt input{text-decoration:line-through;color:var(--dim)}
@@ -157,9 +167,10 @@
   <div class="brand">TIMER<b>_</b></div>
   <div class="hbtns">
     <button id="btnLog">▤ log</button>
-    <button id="btnStats">▦ stats</button>
+    <button id="btnStats">mode_switch</button>
     <button id="btnAdd" class="add">＋ task</button>
     <button id="btnDel" class="del">🗑</button>
+    <button id="btnLvl" title="set task level">①②③</button>
     <button id="btnMore" title="data & sound">⋯</button>
     <button id="btnConnect">connect</button>
     <button id="btnReload" title="reload">⟳</button>
@@ -172,6 +183,10 @@
 <div class="subbar">
   <button class="next" id="btnNext">next ▸ future</button>
   <span class="count" id="count"></span>
+  <label class="tickctl" title="per-second tick while a task runs">tick<input type="checkbox" id="tickChk"></label>
+  <select id="tickVol" class="tickvol" title="tick volume">
+    <option value="0">vol 1</option><option value="1">vol 2</option><option value="2">vol 3</option><option value="3">vol 4</option>
+  </select>
 </div>
 </div>
 
@@ -191,9 +206,12 @@ const SOUND_FILE="timer_sound.wav", BOM="\uFEFF";
 /* ---------- state ---------- */
 let dbDir=null,timerDir=null;
 let tasks=[],events=[],notes=[];
-let settings={mode:"experiment"};        // "experiment" (no discipline stats) | "discipline"
+let settings={mode:"experiment",tickOn:false,tickVol:1,lastRoll_experiment:"",lastRoll_discipline:""};
 let currentDay=jsDayToIdx(new Date().getDay());
-let deleteMode=false;
+let deleteMode=false, levelMode=false;
+const collapsed=new Set();               // task/branch ids whose children are hidden
+let dragId=null;
+function byOrder(a,b){return (+a.sort)-(+b.sort);}
 const DAY_MS=24*3600*1000;                // stats/notes stay editable for 24h, then lock
 let audioDir=null;                        // TIMER/audio_logs handle (voice notes)
 const timers=new Map();                  // runKey -> {t0,dur,before,paused,iv,playedISO}
@@ -258,20 +276,29 @@ async function loadAll(){
   const tt=await readFile(timerDir,TASKS_CSV);tasks=tt?parseCSV(tt).map(normTask):[];
   const et=await readFile(timerDir,EVENTS_CSV);events=et?parseCSV(et):[];
   const nt=await readFile(timerDir,NOTES_CSV);notes=nt?parseCSV(nt):[];
-  events.forEach(e=>{if(!e.created)e.created=e.played_at||(e.date?e.date+"T12:00:00":new Date().toISOString());});
+  events.forEach(e=>{if(!e.created)e.created=e.played_at||(e.date?e.date+"T12:00:00":new Date().toISOString());
+    if(!e.kind)e.kind="done";if(!e.mode)e.mode="experiment";if(e.timer!=="0"&&e.timer!=="1")e.timer="1";});
   const stx=await readFile(timerDir,SETTINGS_CSV);
-  if(stx){const m=parseCSV(stx).find(r=>r.key==="mode");if(m)settings.mode=(m.value==="discipline")?"discipline":"experiment";}
-  render();
+  if(stx){const rows=parseCSV(stx),g=k=>{const r=rows.find(x=>x.key===k);return r?r.value:undefined;};
+    if(g("mode"))settings.mode=(g("mode")==="discipline")?"discipline":"experiment";
+    settings.tickOn=g("tickOn")==="1";
+    const tv=parseInt(g("tickVol"));if(!isNaN(tv))settings.tickVol=Math.max(0,Math.min(3,tv));
+    settings.lastRoll_experiment=g("lastRoll_experiment")||"";
+    settings.lastRoll_discipline=g("lastRoll_discipline")||"";}
+  rollover();
+  syncTickUI();render();
 }
-async function saveSettings(){if(timerDir)await writeFile(timerDir,SETTINGS_CSV,toCSV(["key","value"],[{key:"mode",value:settings.mode}]));}
+async function saveSettings(){if(timerDir)await writeFile(timerDir,SETTINGS_CSV,toCSV(["key","value"],[
+  {key:"mode",value:settings.mode},{key:"tickOn",value:settings.tickOn?"1":"0"},{key:"tickVol",value:String(settings.tickVol)},
+  {key:"lastRoll_experiment",value:settings.lastRoll_experiment||""},{key:"lastRoll_discipline",value:settings.lastRoll_discipline||""}]));}
 function mutable(ms){return isFinite(ms) && (Date.now()-ms)<DAY_MS;}      // editable within 24h, then permanent
 function eventMutable(e){return e&&mutable(Date.parse(e.created||""));}
 function noteMutable(n){return n&&mutable(Date.parse((n.date||"")+"T"+(n.time||"00:00:00")));}
 function normTask(o){return{id:o.id||uid(),parent:o.parent||"",level:(o.level==="1"||o.level==="2"||o.level==="3")?o.level:(o.parent?"":"3"),
-  text:o.text||"",date:o.date||"",hour:o.hour||"",dur:o.dur||"",done:o.done==="1"?"1":"0",
+  text:o.text||"",date:o.date||"",hour:o.hour||"",dur:o.dur||"",done:o.done==="1"?"1":"0",acc:o.acc||"0",
   sort:o.sort||"0",created:o.created||new Date().toISOString()};}
-const TASK_H=["id","parent","level","text","date","hour","dur","done","sort","created"];
-const EVT_H =["id","task_id","level","date","scheduled","played_at","on_time","elapsed_sec","created"];
+const TASK_H=["id","parent","level","text","date","hour","dur","done","acc","sort","created"];
+const EVT_H =["id","task_id","level","date","kind","mode","timer","played_at","elapsed_sec","created"];
 const NOTE_H=["id","task_id","task_text","level","date","time","note","audio"];
 async function saveTasks(){if(timerDir)await writeFile(timerDir,TASKS_CSV,toCSV(TASK_H,tasks));}
 async function saveEvents(){if(timerDir)await writeFile(timerDir,EVENTS_CSV,toCSV(EVT_H,events));}
@@ -283,10 +310,9 @@ async function getAudioDir(){if(!timerDir)return null;if(!audioDir)audioDir=awai
    It's played on a real <audio> element at PLAY time, so it keeps playing through a screen
    lock (like a music track) and the beep fires at the end even if JS is frozen in background. */
 function getAudio(){if(!audioEl){audioEl=new Audio();audioEl.preload="auto";
-    audioEl.addEventListener("pause",()=>{                 // if a music app / focus loss pauses us, resume (unless user paused)
-      const st=timers.get(activeKey);
-      if(st&&!st.paused&&!audioEl.ended&&audioEl.currentTime>0)audioEl.play().catch(()=>{});
-    });
+    const revive=()=>{const st=timers.get(activeKey);
+      if(st&&!st.paused&&!audioEl.ended&&audioEl.currentTime>0)audioEl.play().catch(()=>{});};
+    ["pause","stalled","waiting","suspend"].forEach(ev=>audioEl.addEventListener(ev,revive));
   }return audioEl;}
 function wav8(rate,samples){                 // 8-bit unsigned mono WAV
   const n=samples.length,buf=new Uint8Array(44+n),dv=new DataView(buf.buffer);
@@ -316,7 +342,9 @@ async function buildAlarmURL(remaining){
   const rate=remaining>1800?4000:8000,BEEP=5;
   const silN=Math.floor(remaining*rate);
   const beep=customBuf?await customBeepSamples(rate,BEEP):beepSamples(rate,BEEP);
-  const data=new Uint8Array(silN+beep.length);data.fill(128,0,silN);data.set(beep,silN);
+  const data=new Uint8Array(silN+beep.length);
+  for(let i=0;i<silN;i++)data[i]=128+Math.round(Math.sin(2*Math.PI*60*i/rate)*3);  // ~-32dB 60Hz keep-alive (near-inaudible, stops the OS idling us)
+  data.set(beep,silN);
   return URL.createObjectURL(new Blob([wav8(rate,data)],{type:"audio/wav"}));
 }
 async function loadSound(){                  // decode imported sound (if any) for the beep
@@ -366,9 +394,10 @@ function playAllowed(t,date){                       // can't start before the sc
 function play(id,date){
   const t=byId(id);if(!t)return;const key=runKey(id,date);if(timers.has(key))return;
   if(!playAllowed(t,date)){toast("starts at "+t.hour);return;}
-  primeAudio();
+  primeAudio();ensureTick();
   const dur=(parseFloat(t.dur)||0)*60;
-  const st={t0:Date.now(),dur,before:0,paused:false,iv:null,playedISO:new Date().toISOString()};
+  const before = dur>0 ? 0 : (parseFloat(t.acc)||0);       // stopwatch continues from stored time
+  const st={t0:Date.now(),dur,before,paused:false,iv:null,playedISO:new Date().toISOString()};
   st.iv=setInterval(()=>tick(key,st),250);timers.set(key,st);
   if(dur>0)armAudio(key,dur);           // beeps 5s at the end — baked so it fires even when the screen is locked
   render();
@@ -384,6 +413,7 @@ function togglePause(key){
   }else{                                           // pause (in place, no rewind)
     st.before+=(Date.now()-st.t0)/1000;st.paused=true;clearInterval(st.iv);st.iv=null;
     if(key===activeKey&&audioEl)audioEl.pause();
+    if(st.dur<=0){const t=byId(key.split("|")[0]);if(t){t.acc=String(Math.floor(st.before));saveTasks();}}   // stopwatch: store running total
     if("mediaSession" in navigator)navigator.mediaSession.playbackState="paused";
   }
   render();
@@ -394,30 +424,50 @@ function tick(key,st){
 }
 function mmss(s){s=Math.max(0,Math.floor(s));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
 
-/* ---------- done / events ---------- */
-function eventFor(id,date){return events.find(e=>e.task_id===id&&e.date===date);}
+/* ---------- done / events (per-mode datasets) ---------- */
+function eventFor(id,date){return events.find(e=>e.task_id===id&&e.date===date&&e.kind==="done"&&e.mode===settings.mode);}
+function missFor(id,date){return events.find(e=>e.task_id===id&&e.date===date&&e.kind==="miss"&&e.mode===settings.mode);}
+function isTimerTask(t){return (parseFloat(t.dur)||0)>0;}
 function markDone(id,date){
   const t=byId(id);if(!t)return;const key=runKey(id,date);const st=timers.get(key);
   if(st){clearInterval(st.iv);timers.delete(key);}
   stopAudio(key);
   const played=st?st.playedISO:"";const elapsed=st?elapsedOf(st):0;
-  const sched=t.hour?(date+" "+t.hour):date;let onTime;
-  if(!t.hour){onTime="half";}                                    // no scheduled hour -> 50% discipline
-  else if(played){const p=new Date(played),s=new Date(date+"T"+t.hour+":00");onTime=Math.abs((p-s)/60000)<=ONTIME_TOL?"1":"0";}
-  else{onTime="";}
+  if(!isTimerTask(t)&&st){t.acc=String(elapsed);saveTasks();}          // stopwatch: keep the counted time
+  // if a miss was recorded for this occurrence in this mode, clear it (now it's done)
+  const m=missFor(id,date);if(m)events=events.filter(e=>e!==m);
   if(!eventFor(id,date)){
-    const ev={id:uid(),task_id:id,level:t.level,date,scheduled:sched,played_at:played,on_time:onTime,elapsed_sec:String(elapsed),created:new Date().toISOString()};
-    events.push(ev);saveEvents();
+    events.push({id:uid(),task_id:id,level:t.level,date,kind:"done",mode:settings.mode,
+      timer:isTimerTask(t)?"1":"0",played_at:played,elapsed_sec:String(elapsed),created:new Date().toISOString()});
   }
-  if(t.level!=="1"){t.done="1";saveTasks();}
-  render();
+  saveEvents();render();
 }
 function undone(id,date){
-  const t=byId(id);const ev=eventFor(id,date);
+  const ev=eventFor(id,date);
   if(ev&&!eventMutable(ev))return false;                    // locked permanent after 24h
   if(ev){events=events.filter(e=>e!==ev);saveEvents();}
-  if(t.level!=="1"){t.done="0";saveTasks();}
   render();return true;
+}
+function missEvent(t,date){return {id:uid(),task_id:t.id,level:t.level,date,kind:"miss",mode:settings.mode,timer:"1",played_at:"",elapsed_sec:"0",created:new Date().toISOString()};}
+function rollover(){                          // at day's end, unchecked tasks pass to the next day; the miss stays on the old day (timer tasks only)
+  const today=todayStr(),cur=settings.mode;let changed=false,evChanged=false;
+  // L2/L3 dated tasks: roll forward; record a miss on the passed day for timer tasks
+  tasks.forEach(t=>{
+    if(t.parent||t.level==="1"||!t.date)return;
+    if(t.date<today){
+      if(isTimerTask(t)&&!eventFor(t.id,t.date)&&!missFor(t.id,t.date)){events.push(missEvent(t,t.date));evChanged=true;}
+      t.date=today;changed=true;                            // pass to today (still visible)
+    }
+  });
+  // L1 timer anchors: a missed day (no done event this mode) is a miss — backfill bounded by this mode's lastRoll
+  const key="lastRoll_"+cur, last=settings[key];
+  if(last){let d=new Date(last+"T00:00");d.setDate(d.getDate()+1);
+    for(let i=0;i<60;i++){const ds=ymd(d);if(ds>=today)break;
+      tasks.filter(t=>t.level==="1"&&isTimerTask(t)).forEach(t=>{
+        if(!eventFor(t.id,ds)&&!missFor(t.id,ds)){events.push(missEvent(t,ds));evChanged=true;}});
+      d.setDate(d.getDate()+1);}}
+  settings[key]=today;
+  saveSettings();if(changed)saveTasks();if(evChanged)saveEvents();
 }
 
 /* ---------- task ops ---------- */
@@ -440,8 +490,11 @@ function setLevel(id,lvl){
   if(lvl==="1")t.date=""; else if(lvl==="2"){if(!t.date)t.date=todayStr();} else t.date=todayStr();
   saveTasks();if(lvl!=="1")currentDay=weekdayIdxOf(t.date);render();
 }
-function resetTask(id){const t=byId(id);if(!t)return;t.text="";t.dur="";t.hour="";saveTasks();render();}
-function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;saveTasks();if(field==="date"){currentDay=weekdayIdxOf(val);render();}}
+function resetTask(id){const t=byId(id);if(!t)return;
+  [...timers.keys()].filter(k=>k.split("|")[0]===id).forEach(k=>{const st=timers.get(k);if(st&&st.iv)clearInterval(st.iv);timers.delete(k);stopAudio(k);});
+  t.text="";t.dur="";t.hour="";t.acc="0";saveTasks();render();}
+function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;saveTasks();
+  if(field==="date"){currentDay=weekdayIdxOf(val);render();}else if(field==="dur"){render();}}
 function toggleBranch(id,checked){
   const t=byId(id);if(!t)return;const key=runKey(id,"b");
   if(checked){const st=timers.get(key);if(st){clearInterval(st.iv);timers.delete(key);}stopAudio(key);t.done="1";}
@@ -454,31 +507,23 @@ function deleteTask(id){const t=byId(id);if(!t)return;
   const kill=new Set([id,...allDesc(id)]);
   tasks=tasks.filter(x=>!kill.has(x.id));saveTasks();render();}
 
-/* ---------- long-press priority menu ---------- */
-let pMenu=null,pMenuPos={x:0,y:0};
-function closePMenu(){if(pMenu){pMenu.remove();pMenu=null;}}
-function openPriority(id,x,y){pMenuPos={x,y};buildPMenu(id);}
-function buildPMenu(id){
-  closePMenu();const t=byId(id);if(!t||t.parent)return;
-  const m=document.createElement("div");m.className="pmenu";
-  m.innerHTML=`<div class="ph">priority</div>
-    <button class="p1${t.level==="1"?" sel":""}" data-l="1">level 1 · daily</button>
-    <button class="p2${t.level==="2"?" sel":""}" data-l="2">level 2 · scheduled</button>
-    <button class="p3${t.level==="3"?" sel":""}" data-l="3">level 3 · quick</button>
-    <div class="ph">date ${t.level==="2"?"":"· level 2 only"}</div>
-    <input class="dmy" id="pmDate" value="${fmtD(t.date)}" placeholder="dd/mm/yyyy" inputmode="numeric" ${t.level==="2"?"":"disabled"}>
-    <button id="pmClose">close</button>`;
-  document.body.appendChild(m);pMenu=m;
-  const w=m.offsetWidth,h=m.offsetHeight;
-  m.style.left=Math.max(6,Math.min(pMenuPos.x,window.innerWidth-w-6))+"px";
-  m.style.top=Math.max(6,Math.min(pMenuPos.y,window.innerHeight-h-6))+"px";
-  m.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>{setLevel(id,b.dataset.l);buildPMenu(id);});
-  const di=m.querySelector("#pmDate");
-  di.onchange=()=>{const iso=parseDMY(di.value);if(iso)editField(id,"date",iso);di.value=fmtD(byId(id).date);};
-  m.querySelector("#pmClose").onclick=closePMenu;
+/* ---------- reorder / level-mode / collapse / hour ---------- */
+function siblingsOf(id){const t=byId(id);if(!t)return[];
+  return t.parent?tasks.filter(x=>x.parent===t.parent):tasks.filter(x=>!x.parent&&x.level===t.level);}
+function reorder(dragId,targetId){
+  const d=byId(dragId),tg=byId(targetId);if(!d||!tg||dragId===targetId)return false;
+  const sameGroup = d.parent?(d.parent===tg.parent):(!tg.parent&&d.level===tg.level);
+  if(!sameGroup)return false;
+  let ids=siblingsOf(dragId).slice().sort(byOrder).map(x=>x.id);
+  ids=ids.filter(x=>x!==dragId);
+  const ti=ids.indexOf(targetId);ids.splice(ti,0,dragId);
+  ids.forEach((x,i)=>{byId(x).sort=String(i);});
+  return true;
 }
-document.addEventListener("pointerdown",e=>{if(pMenu&&!e.target.closest(".pmenu"))closePMenu();},true);
-window.addEventListener("scroll",closePMenu,true);
+function parseHM(s){s=(s||"").trim();if(!s)return "";                  // empty clears the hour
+  let m=s.match(/^(\d{1,2}):?(\d{2})$/);if(!m)m=s.match(/^(\d{1,2})$/);
+  if(!m)return null;let h=+m[1],mi=m[2]!==undefined?+m[2]:0;
+  if(h>23||mi>59)return null;return String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0");}
 
 /* ---------- render ---------- */
 function setConn(txt,ok){const c=document.getElementById("conn");c.textContent=txt;c.classList.toggle("ok",!!ok);}
@@ -492,6 +537,7 @@ function render(){
   renderTabs();
   const list=document.getElementById("list");list.innerHTML="";
   document.getElementById("btnDel").classList.toggle("on",deleteMode);
+  document.getElementById("btnLvl").classList.toggle("on",levelMode);
   const wk=weekDates(),tabDate=wk[currentDay],today=todayStr(),weekEnd=wk[6];
   // level 3 & 2 that belong on this weekday
   const inTab=t=>{ if(t.level==="1")return false;
@@ -499,9 +545,9 @@ function render(){
     if(t.date<today)return true;                 // overdue
     if(t.date<=weekEnd)return true;              // this week
     return false;};                              // far future -> only in "next"
-  const l3=tasks.filter(t=>t.level==="3"&&inTab(t)).sort(byTime);
-  const l2=tasks.filter(t=>t.level==="2"&&inTab(t)).sort(byTime);
-  const l1=tasks.filter(t=>t.level==="1").sort(byTime);   // daily, every tab
+  const l3=tasks.filter(t=>t.level==="3"&&inTab(t)).sort(byOrder);
+  const l2=tasks.filter(t=>t.level==="2"&&inTab(t)).sort(byOrder);
+  const l1=tasks.filter(t=>t.level==="1").sort(byOrder);   // daily, every tab
   let any=l3.length+l2.length+l1.length;
   if(l3.length){list.appendChild(grp("l3","level 3 · quick"));l3.forEach(t=>list.appendChild(renderTask(t,t.date)));}
   if(l2.length){list.appendChild(grp("l2","level 2 · scheduled"));l2.forEach(t=>list.appendChild(renderTask(t,t.date)));}
@@ -513,59 +559,64 @@ function render(){
 }
 function grp(cls,label){const d=document.createElement("div");d.className="grp "+cls;d.innerHTML='<span class="dot"></span>'+label;return d;}
 function byTime(a,b){if((a.date||"")!==(b.date||""))return (a.date||"")<(b.date||"")?-1:1;if(a.hour!==b.hour)return a.hour<b.hour?-1:1;return (+a.sort)-(+b.sort);}
-function isOverdue(t,date){return t.done!=="1"&&!eventFor(t.id,date)&&(date<todayStr()||(date===todayStr()&&t.hour&&t.hour<nowHM()));}
+function isOverdue(t,date){return !eventFor(t.id,date)&&(date<todayStr()||(date===todayStr()&&t.hour&&t.hour<nowHM()));}
 function hasNote(id){return notes.some(n=>n.task_id===id);}
+function editCluster(id,isTask){
+  if(deleteMode)return `<button class="xdel" data-act="del" data-id="${id}">✕</button>`;
+  if(levelMode&&isTask){const t=byId(id);return `<span class="lvlpick">`+
+    ["1","2","3"].map(L=>`<button class="lp lp${L}${t.level===L?' on':''}" data-act="setlvl" data-id="${id}" data-l="${L}">${L}</button>`).join("")+`</span>`;}
+  if(levelMode)return "";                                   // branches have no level
+  return `<button class="note${isTask&&hasNote(id)?' has':''}" data-act="note" data-id="${id}" title="note">✎</button>`+
+         (isTask?`<button class="brc" data-act="branch" data-id="${id}" title="add branch">+⑂</button>`:
+                 `<button class="brc" data-act="branch" data-id="${id}" title="sub-branch" ${branchDepth(byId(id))<6?'':'disabled'}>+⑂</button>`)+
+         (isTask?`<button class="rst" data-act="reset" data-id="${id}" title="clear">↺</button>`:"");
+}
+function expBtn(id){const kids=branchesOf(id);if(!kids.length)return "";const c=collapsed.has(id);
+  return `<button class="exp" data-act="collapse" data-id="${id}" title="${c?'expand':'collapse'}">${c?'▸':'▾'}</button>`;}
 function renderTask(t,occDate){
   const key=runKey(t.id,occDate),st=timers.get(key),running=!!st,paused=running&&st.paused;
-  const isDone = t.level==="1" ? !!eventFor(t.id,occDate) : t.done==="1";
+  const isDone = !!eventFor(t.id,occDate);
   const chkLock = isDone && (()=>{const ev=eventFor(t.id,occDate);return ev&&!eventMutable(ev);})();
-  const canPlay = playAllowed(t,occDate);
-  const cls=["task","l"+t.level];if(isDone)cls.push("done");if(!isDone&&t.level!=="1"&&isOverdue(t,occDate))cls.push("overdue");
+  const canPlay = playAllowed(t,occDate), isSW=!((parseFloat(t.dur)||0)>0), showHour=t.level!=="3";
+  const cls=["task","l"+t.level,isSW?"mode-sw":"mode-timer"];if(isDone)cls.push("done");if(!isDone&&isOverdue(t,occDate))cls.push("overdue");if(dragId===t.id)cls.push("dragging");
   const wrap=document.createElement("div");
   const el=document.createElement("div");el.className=cls.join(" ");el.dataset.tid=t.id;
-  const chip = t.level==="1"?`<span class="daily">daily</span>`:"";       // date is stored, not shown on the pack
-  const bn=branchesOf(t.id).length;
-  el.innerHTML=`
-    <div class="row1">
-      ${running
-        ? `<button class="play running" data-act="pause" data-id="${t.id}" data-date="${occDate}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
-        : `<button class="play" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||!canPlay)?"disabled":""} title="${!canPlay&&t.hour?('starts at '+t.hour):''}">▶</button>`}
-      <span class="txt"><input data-act="text" data-id="${t.id}" value="${escAttr(t.text)}" placeholder="task…"></span>
-      ${running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`:''}
-      ${(!isDone&&t.level!=="1"&&isOverdue(t,occDate))?'<span class="tag over">overdue</span>':''}
-    </div>
-    <div class="row2">
-      ${chip}
-      <input type="time" data-act="hour" data-id="${t.id}" value="${t.hour}">
-      <input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="numeric">
-      <button class="note${hasNote(t.id)?' has':''}" data-act="note" data-id="${t.id}" title="log a note">✎</button>
-      <button class="brc" data-act="branch" data-id="${t.id}" title="add branch">+⑂</button>
-      <button class="rst" data-act="reset" data-id="${t.id}" title="clear text / minutes / time">↺</button>
-      ${deleteMode?`<button class="xdel" data-act="del" data-id="${t.id}">✕</button>`:''}
-      <span class="chk"><input type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} ${chkLock?"disabled":""} title="${chkLock?'permanent (24h+)':'done'}"></span>
-    </div>`;
+  el.innerHTML=`<div class="row">
+    <input class="ck" type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} ${chkLock?"disabled":""} title="${chkLock?'permanent (24h+)':'done'}">
+    ${expBtn(t.id)}
+    <span class="txt"><input data-act="text" data-id="${t.id}" value="${escAttr(t.text)}" placeholder="task…"></span>
+    ${running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`
+      :(isSW&&(+t.acc>0)?`<span class="elapsed sw" title="stored time">${mmss(+t.acc)}</span>`:'')}
+    ${showHour?`<input class="hr" data-act="hour" data-id="${t.id}" value="${escAttr(t.hour)}" placeholder="--:--" inputmode="numeric" maxlength="5">`:''}
+    <input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="decimal">
+    ${editCluster(t.id,true)}
+    ${running
+      ? `<button class="play running" data-act="pause" data-id="${t.id}" data-date="${occDate}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
+      : `<button class="play" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||!canPlay)?"disabled":""} title="${!canPlay&&t.hour?('starts '+t.hour):''}">▶</button>`}
+  </div>`;
   wrap.appendChild(el);
-  if(bn){const bc=document.createElement("div");bc.className="branches";
-    branchesOf(t.id).forEach(b=>bc.appendChild(renderBranch(b)));wrap.appendChild(bc);}
+  const kids=branchesOf(t.id);
+  if(kids.length&&!collapsed.has(t.id)){const bc=document.createElement("div");bc.className="branches";
+    kids.slice().sort(byOrder).forEach(b=>bc.appendChild(renderBranch(b)));wrap.appendChild(bc);}
   return wrap;
 }
 function renderBranch(b){
-  const key=runKey(b.id,"b"),st=timers.get(key),running=!!st,paused=running&&st.paused,isDone=b.done==="1",canBranch=branchDepth(b)<6;
+  const key=runKey(b.id,"b"),st=timers.get(key),running=!!st,paused=running&&st.paused,isDone=b.done==="1";
   const wrap=document.createElement("div");
-  const el=document.createElement("div");el.className="branch"+(isDone?" done":"");
+  const el=document.createElement("div");el.className="branch"+(isDone?" done":"")+(dragId===b.id?" dragging":"");el.dataset.bid=b.id;
   el.innerHTML=`
+    <input class="ck" type="checkbox" data-act="bdone" data-id="${b.id}" ${isDone?"checked":""} title="done">
+    ${expBtn(b.id)}
+    <span class="txt"><input data-act="btext" data-id="${b.id}" value="${escAttr(b.text)}" placeholder="branch…"></span>
+    ${running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`:''}
+    <input class="dur" data-act="dur" data-id="${b.id}" value="${escAttr(b.dur)}" placeholder="min" inputmode="decimal">
+    ${editCluster(b.id,false)}
     ${running
       ? `<button class="play running" data-act="bpause" data-id="${b.id}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
-      : `<button class="play" data-act="bplay" data-id="${b.id}" ${isDone?"disabled":""}>▶</button>`}
-    <span class="txt"><input data-act="btext" data-id="${b.id}" value="${escAttr(b.text)}" placeholder="branch…"></span>
-    <input class="dur" data-act="dur" data-id="${b.id}" value="${escAttr(b.dur)}" placeholder="min" inputmode="numeric">
-    ${running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`:''}
-    <button class="brc" data-act="branch" data-id="${b.id}" title="add sub-branch" ${canBranch?'':'disabled'}>+⑂</button>
-    ${deleteMode?`<button class="xdel" data-act="del" data-id="${b.id}">✕</button>`:''}
-    <span class="chk"><input type="checkbox" data-act="bdone" data-id="${b.id}" ${isDone?"checked":""} title="done"></span>`;
+      : `<button class="play" data-act="bplay" data-id="${b.id}" ${isDone?"disabled":""}>▶</button>`}`;
   wrap.appendChild(el);
   const kids=branchesOf(b.id);
-  if(kids.length){const bc=document.createElement("div");bc.className="branches";kids.forEach(k=>bc.appendChild(renderBranch(k)));wrap.appendChild(bc);}
+  if(kids.length&&!collapsed.has(b.id)){const bc=document.createElement("div");bc.className="branches";kids.slice().sort(byOrder).forEach(k=>bc.appendChild(renderBranch(k)));wrap.appendChild(bc);}
   return wrap;
 }
 function escAttr(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
@@ -585,29 +636,39 @@ listEl.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b
   if(act==="reset")resetTask(id);
   if(act==="note")openNote(id);
   if(act==="branch")addBranch(id);
+  if(act==="collapse"){if(collapsed.has(id))collapsed.delete(id);else collapsed.add(id);render();}
+  if(act==="setlvl"){setLevel(id,b.dataset.l);}
 });
 listEl.addEventListener("change",e=>{const b=e.target.closest("[data-act]");if(!b)return;
   const id=b.dataset.id,date=b.dataset.date,act=b.dataset.act;
   if(act==="text")editField(id,"text",b.value);
   if(act==="btext")editField(id,"text",b.value);
-  if(act==="date"){const iso=parseDMY(b.value);if(iso)editField(id,"date",iso);else render();}
-  if(act==="hour")editField(id,"hour",b.value);
-  if(act==="dur")editField(id,"dur",b.value.replace(/[^0-9]/g,""));
+  if(act==="hour"){const v=parseHM(b.value);if(v===null)render();else editField(id,"hour",v);}
+  if(act==="dur")editField(id,"dur",b.value.replace(/[^0-9.]/g,""));
   if(act==="done"){ if(b.checked)markDone(id,date); else if(!undone(id,date))b.checked=true; }
   if(act==="bdone")toggleBranch(id,b.checked);
 });
 
-/* long-press a task card -> priority menu */
+/* long-press a task/branch (not its controls) -> drag to reorder among siblings */
 let lpTimer=null,lpXY=null;
+function rowIdAt(x,y){const el=document.elementFromPoint(x,y);if(!el)return null;
+  const r=el.closest("[data-tid],[data-bid]");return r?(r.dataset.tid||r.dataset.bid):null;}
 listEl.addEventListener("pointerdown",e=>{
-  const card=e.target.closest(".task");if(!card)return;
-  if(e.target.closest("input,textarea,button,select"))return;   // let controls work normally
-  const id=card.dataset.tid;if(!id)return;
-  lpXY={x:e.clientX,y:e.clientY};
-  lpTimer=setTimeout(()=>{lpTimer=null;openPriority(id,lpXY.x,lpXY.y);},480);
+  const row=e.target.closest("[data-tid],[data-bid]");if(!row)return;
+  if(e.target.closest("button,input,textarea,select"))return;      // controls work normally; hold on the row body drags
+  const id=row.dataset.tid||row.dataset.bid;lpXY={x:e.clientX,y:e.clientY};
+  lpTimer=setTimeout(()=>{lpTimer=null;dragId=id;listEl.classList.add("dragging");
+    if(navigator.vibrate)navigator.vibrate(15);render();},380);
 });
-listEl.addEventListener("pointermove",e=>{if(lpTimer&&lpXY&&(Math.abs(e.clientX-lpXY.x)>12||Math.abs(e.clientY-lpXY.y)>12)){clearTimeout(lpTimer);lpTimer=null;}});
-["pointerup","pointercancel","pointerleave"].forEach(ev=>listEl.addEventListener(ev,()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}}));
+listEl.addEventListener("pointermove",e=>{
+  if(dragId){e.preventDefault();const over=rowIdAt(e.clientX,e.clientY);
+    if(over&&over!==dragId&&reorder(dragId,over))render();return;}
+  if(lpTimer&&lpXY&&(Math.abs(e.clientX-lpXY.x)>12||Math.abs(e.clientY-lpXY.y)>12)){clearTimeout(lpTimer);lpTimer=null;}
+},{passive:false});
+["pointerup","pointercancel","pointerleave"].forEach(ev=>listEl.addEventListener(ev,()=>{
+  if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
+  if(dragId){dragId=null;listEl.classList.remove("dragging");saveTasks();render();}
+}));
 
 /* ---------- modals ---------- */
 const modal=document.getElementById("modal"),sheet=document.getElementById("sheet");
@@ -697,74 +758,53 @@ document.getElementById("btnNext").onclick=()=>{
     <div class="hint">Level-2 tasks dated after today are parked here until their day. Level-1 is daily; level-3 is today-only.</div>`);
 };
 
-/* ---------- statistics ---------- */
+/* ---------- mode_switch (discipline stats, per-mode dataset) ---------- */
 function openStats(){
-  const disc = settings.mode==="discipline";
-  const wk=weekDates(),today=todayStr();
-  const evL=lv=>events.filter(e=>e.level===lv);
-  const otVal=e=>e.on_time==="1"?1:e.on_time==="half"?0.5:e.on_time==="0"?0:null;   // unscheduled = 0.5
-  const onTimeRate=arr=>{const v=arr.map(otVal).filter(x=>x!==null);return v.length?Math.round(100*v.reduce((a,b)=>a+b,0)/v.length):0;};
-  const wOf=lv=>lv==="1"?3:lv==="2"?2:1;
+  const disc = settings.mode==="discipline", today=todayStr(), wk=weekDates();
+  const mev = events.filter(e=>e.mode===settings.mode && e.timer==="1");   // this mode, timer tasks only (stopwatch ignored)
+  const done=mev.filter(e=>e.kind==="done"), miss=mev.filter(e=>e.kind==="miss");
+  // per-level discipline: each checked timer task = +100, each missed (timer passed, unchecked) = -10; average, clamp 0-100
+  const levelScore=lv=>{const s=mev.filter(e=>e.level===lv).map(e=>e.kind==="miss"?-10:100);
+    return s.length?Math.max(0,Math.min(100,Math.round(s.reduce((a,b)=>a+b,0)/s.length))):null;};
+  const s1=levelScore("1"),s2=levelScore("2"),s3=levelScore("3");
+  const useS=s=>s==null?100:s;                                             // no data yet = nothing missed
+  const overall=Math.round(0.50*useS(s1)+0.30*useS(s2)+0.20*useS(s3));     // L1 50% · L2 30% · L3 20%
+  const show=s=>s==null?'<span class="mut">—</span>':s+'%';
 
   const l1=tasks.filter(t=>t.level==="1");
-  let l1hit=0;l1.forEach(t=>{const days=wk.filter(d=>eventFor(t.id,d)).length;if(days>=L1_TARGET)l1hit++;});
-  const l2=tasks.filter(t=>t.level==="2");
-  const l2done=l2.filter(t=>t.done==="1").length;
-  const l2rate=l2.length?Math.round(100*l2done/l2.length):0;
-  const l3done=evL("3").length;
-
-  let dNum=0,dDen=0;events.forEach(e=>{const v=otVal(e);if(v===null)return;const w=wOf(e.level);dNum+=w*v;dDen+=w;});
-  const discipline=dDen?Math.round(100*dNum/dDen):0;
-
-  let streak=0;for(let k=0;k<90;k++){const d=new Date();d.setDate(d.getDate()-k);const ds=ymd(d);
-    if(!l1.length)break;if(l1.every(t=>eventFor(t.id,ds)))streak++;else break;}
-  const totalSec=events.reduce((a,e)=>a+(+e.elapsed_sec||0),0);
-  const doneToday=events.filter(e=>e.date===today).length;
-  const perDay=[0,0,0,0,0,0,0];events.forEach(e=>{if(e.date)perDay[weekdayIdxOf(e.date)]++;});
-  const maxD=Math.max(1,...perDay);
-
   const l1rows = l1.length ? l1.map(t=>{
-      const evs=events.filter(e=>e.task_id===t.id);
       const cnt=wk.filter(d=>eventFor(t.id,d)).length;
-      const streakT=(()=>{let s=0;for(let k=0;k<90;k++){const dd=new Date();dd.setDate(dd.getDate()-k);if(eventFor(t.id,ymd(dd)))s++;else break;}return s;})();
       const dots=wk.map(d=>`<span class="wd${eventFor(t.id,d)?' on':''}${d===today?' td':''}"></span>`).join("");
+      const tmev=mev.filter(e=>e.task_id===t.id),sc=tmev.length?Math.max(0,Math.min(100,Math.round(tmev.map(e=>e.kind==="miss"?-10:100).reduce((a,b)=>a+b,0)/tmev.length))):null;
       return `<div class="l1row"><span class="l1t">${escAttr(t.text||"(unnamed)")}</span>
-        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span>${disc?`<span class="l1o" title="on-time">${onTimeRate(evs)}%</span>`:''}<span class="l1s" title="streak">🔥${streakT}</span></span></div>`;
+        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span><span class="l1o">${sc==null?'—':sc+'%'}</span></span></div>`;
     }).join("") : '<div class="mut" style="font-size:11px;padding:4px 2px">no level-1 anchors yet</div>';
 
-  openModal(`<h3>statistics <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+  openModal(`<h3>mode_switch <span class="x"><button onclick="closeModal()">✕</button></span></h3>
     <div class="modesw"><button class="${disc?'':'sel'}" onclick="setMode('experiment')">experiment</button><button class="${disc?'sel':''}" onclick="setMode('discipline')">discipline</button></div>
-    <div class="hint" style="margin:0 0 6px">${disc?'Discipline mode — playing on the scheduled time builds your score.':'Experiment mode — no discipline score; free to test the app.'}</div>
-    ${disc?`<div class="stat"><span>Discipline score <span class="mut">(weighted L1·3 L2·2 L3·1)</span></span><b>${discipline}%</b></div>
-    <div class="stat"><span>On-time overall</span><b>${onTimeRate(events)}%</b></div>`:''}
-    <div class="stat"><span>Level-1 streak</span><b>${streak} day${streak===1?'':'s'}</b></div>
-    <div class="stat"><span>Finished today</span><b>${doneToday}</b></div>
-    <div class="stat"><span>Total tracked time</span><b>${fmtDur(totalSec)}</b></div>
+    <div class="hint" style="margin:0 0 8px">${disc?'Discipline mode — its own dataset; counting resumes from where you left it.':'Experiment mode — its own dataset; free to test, and clearable below.'}</div>
 
-    <div class="lvhead lv3">▮ level 3 · quick (volatile)</div>
-    <div class="stat"><span>Completed count</span><b>${l3done}</b></div>
-    ${disc?`<div class="stat"><span>On-time</span><b>${onTimeRate(evL("3"))}%</b></div>`:''}
+    <div class="stat"><span><b>Discipline</b> <span class="mut">(L1·50% L2·30% L3·20%)</span></span><b>${overall}%</b></div>
+    <div class="stat"><span>level 1 · daily <span class="mut">50%</span></span><b>${show(s1)}</b></div>
+    <div class="stat"><span>level 2 · scheduled <span class="mut">30%</span></span><b>${show(s2)}</b></div>
+    <div class="stat"><span>level 3 · quick <span class="mut">20%</span></span><b>${show(s3)}</b></div>
+    <div class="stat"><span>checked / missed (timer tasks)</span><b>${done.length} / ${miss.length}</b></div>
+    <div class="stat"><span>total tracked time</span><b>${fmtDur(mev.reduce((a,e)=>a+(+e.elapsed_sec||0),0))}</b></div>
 
-    <div class="lvhead lv2">▮ level 2 · scheduled (${l2.length})</div>
-    <div class="stat"><span>Completed</span><b>${l2rate}% <span class="mut">(${l2done}/${l2.length})</span></b></div>
-    ${disc?`<div class="stat"><span>On-time</span><b>${onTimeRate(evL("2"))}%</b></div>`:''}
-
-    <div class="lvhead lv1">▮ level 1 · daily anchors (${l1hit}/${l1.length} hitting ≥${L1_TARGET} this week)</div>
+    <div class="lvhead lv1">▮ level 1 · daily anchors — this week</div>
     ${l1rows}
-    <div class="hint" style="margin-top:4px">dots = this week Mon→Sun (filled = done, blue outline = today) · X/7 vs goal ≥${L1_TARGET}${disc?' · % on-time':''} · 🔥 current daily streak</div>
+    <div class="hint" style="margin-top:4px">dots = Mon→Sun done · X/7 · % = this anchor's discipline (checked vs missed)</div>
 
-    <div class="mut" style="font-size:11px;margin-top:12px">completions by weekday (all time)</div>
-    <div class="bars">${perDay.map((v,i)=>`<div class="bar"><div class="v">${v||''}</div><div class="b" style="height:${Math.round(100*v/maxD)}%;background:${i===currentDay?'var(--l1)':'var(--l2)'}"></div><div class="l">${DAYLABEL[i][0]}</div></div>`).join("")}</div>
-
-    ${!disc?`<div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">clear stats data</button></div>`:''}
-    <div class="hint">${disc?`On-time = play within ±${ONTIME_TOL} min of the scheduled hour (unscheduled 50%, late 0%). `:''}Completions & notes stay editable for 24h, then lock in. "Clear stats data" wipes all completions (tasks & notes stay).</div>`);
+    ${!disc?`<div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">clear ${settings.mode} data</button></div>`:''}
+    <div class="hint">Only <b>timer</b> tasks count (stopwatch never affects stats). A timer task that isn't checked after its time passes is a miss (−10); a checked one is +100. Unchecked tasks pass to the next day but the miss stays on the day it was due. Experiment & discipline keep <b>separate</b> data.</div>`);
 }
 document.getElementById("btnStats").onclick=openStats;
-window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";saveSettings();openStats();render();};
+window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";saveSettings();rollover();openStats();render();};
 window.clearStats=function(){
-  if(settings.mode==="discipline"){toast("switch to experiment mode to clear");return;}
-  if(!confirm("Delete ALL completion / stats data? Your tasks and notes stay. This can't be undone."))return;
-  events=[];tasks.forEach(t=>{if(t.level!=="1")t.done="0";});saveEvents();saveTasks();openStats();render();toast("stats data cleared");
+  if(settings.mode==="discipline"){toast("switch to experiment to clear");return;}
+  if(!confirm("Delete ALL "+settings.mode+" stats data? Tasks and notes stay. This can't be undone."))return;
+  events=events.filter(e=>e.mode!=="experiment");saveEvents();
+  settings.lastRoll_experiment="";saveSettings();openStats();render();toast(settings.mode+" data cleared");
 };
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
 
@@ -793,18 +833,41 @@ function openMore(){openModal(`<h3>data & sound <span class="x"><button onclick=
     ? "On this computer your data lives in the TIMER folder inside the database folder you connect."
     : "On phone the app stores data <b>privately on-device</b> (not a visible folder). Import your timer sound here, and use export now and then to back it up (downloads to your Downloads folder). Restore moves data from another device."}</div>`);}
 
+/* ---------- per-second tick (metronome, independent volume) ---------- */
+let tickCtx=null,tickIv=null;
+function ensureTick(){
+  if(!tickCtx){try{tickCtx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  if(tickCtx&&tickCtx.state==="suspended")tickCtx.resume();
+  if(!tickIv)tickIv=setInterval(tickPulse,1000);
+}
+function tickActive(){for(const st of timers.values()){if(st.paused)continue;
+  if(st.dur>0){if(elapsedOf(st)<st.dur)return true;}else return true;}return false;}   // timer: only until it ends; stopwatch: while running
+function tickPulse(){
+  if(!settings.tickOn||!tickCtx||!tickActive())return;
+  const vol=[0.05,0.14,0.34,0.7][settings.tickVol]||0.14;
+  const o=tickCtx.createOscillator(),g=tickCtx.createGain();o.type="triangle";o.frequency.value=1600;
+  o.connect(g);g.connect(tickCtx.destination);const t=tickCtx.currentTime;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.002);g.gain.exponentialRampToValueAtTime(0.0001,t+0.03);
+  o.start(t);o.stop(t+0.05);
+}
+function syncTickUI(){const c=document.getElementById("tickChk"),v=document.getElementById("tickVol");
+  if(c)c.checked=settings.tickOn;if(v)v.value=String(settings.tickVol);}
+document.getElementById("tickChk").onchange=e=>{settings.tickOn=e.target.checked;saveSettings();if(settings.tickOn)ensureTick();};
+document.getElementById("tickVol").onchange=e=>{settings.tickVol=Math.max(0,Math.min(3,+e.target.value||0));saveSettings();};
+
 /* ---------- header ---------- */
 document.getElementById("btnConnect").onclick=connect;
 document.getElementById("btnMore").onclick=openMore;
 document.getElementById("btnReload").onclick=async()=>{if(!timerDir){connect();return;}await loadAll();await loadSound();};
 document.getElementById("btnAdd").onclick=()=>{if(!timerDir){toast(HAS_FSA?"connect a folder first":"tap start first");return;}addTask();};
-document.getElementById("btnDel").onclick=()=>{deleteMode=!deleteMode;render();};
+document.getElementById("btnDel").onclick=()=>{deleteMode=!deleteMode;if(deleteMode)levelMode=false;render();};
+document.getElementById("btnLvl").onclick=()=>{levelMode=!levelMode;if(levelMode)deleteMode=false;render();};
 if(!HAS_FSA){document.getElementById("btnConnect").textContent="start";document.getElementById("conn").textContent="tap start";}
 
 render();
 // re-render each minute so time-gated play buttons unlock when the hour arrives (skip while typing / menu open)
 setInterval(()=>{const a=document.activeElement;
-  if(timerDir && !pMenu && !modal.classList.contains("on") && !(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")))render();},30000);
+  if(timerDir && !dragId && !modal.classList.contains("on") && !(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")))render();},30000);
 
 /* ---------- PWA: register service worker when hosted over http(s) ---------- */
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
