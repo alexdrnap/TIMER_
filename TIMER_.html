@@ -101,6 +101,8 @@
   .wdpick .wd{flex:1;min-width:34px;padding:8px 0;color:var(--dim)}
   .wdpick .wd.on{background:var(--l3);color:var(--bg);border-color:var(--l3)}
   .modesw.rp button.sel{background:var(--l2);color:var(--bg);box-shadow:none}
+  .modesw.win button{padding:5px 11px;font-size:12px}
+  .modesw.win button.sel{background:var(--l3);color:var(--bg);box-shadow:none}
   #btnSkip{color:var(--danger);border-color:#4a2c2c}
   .skrow{display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)}
   .sklvl{flex:0 0 auto;width:20px;text-align:center;font-weight:700}
@@ -285,11 +287,14 @@ function occursOn(t,dateStr,wdIdx){                                // does this 
     if(!t.repeat)return t.date===dateStr;                         // once
     if(dateStr<(t.date||""))return false;
     const a=(t.date||"").split("-").map(Number),d=dateStr.split("-").map(Number);
-    if(t.repeat==="m")return d[2]===a[2];                         // monthly: same day-of-month
-    if(t.repeat==="y")return d[1]===a[1]&&d[2]===a[2];            // yearly: same month+day
+    if(t.repeat==="m"){const occ=Math.min(a[2],daysInMonth(d[0],d[1]));return d[2]===occ;}   // monthly; clamp (31 -> 30/28)
+    if(t.repeat==="y"){const occ=Math.min(a[2],daysInMonth(d[0],a[1]));return d[1]===a[1]&&d[2]===occ;}  // yearly; Feb29 -> Feb28
   }
   return false;
 }
+function daysInMonth(y,m){return new Date(y,m,0).getDate();}      // m is 1-12
+function addMonths(iso,n){const p=iso.split("-").map(Number);let y=p[0],m=p[1]-1+n;y+=Math.floor(m/12);m=((m%12)+12)%12;const day=Math.min(p[2],daysInMonth(y,m+1));return y+"-"+String(m+1).padStart(2,"0")+"-"+String(day).padStart(2,"0");}
+function addYears(iso,n){const p=iso.split("-").map(Number),y=p[0]+n,day=Math.min(p[2],daysInMonth(y,p[1]));return y+"-"+String(p[1]).padStart(2,"0")+"-"+String(day).padStart(2,"0");}
 function daysBetween(a,b){return Math.round((new Date(b+"T00:00")-new Date(a+"T00:00"))/86400000);}
 function fmtD(iso){if(!iso)return"";const p=iso.split("-");return p.length===3?p[2]+"/"+p[1]+"/"+p[0]:iso;}   // DD/MM/YYYY
 function fmtDM(iso){if(!iso)return"";const p=iso.split("-");return p.length===3?p[2]+"/"+p[1]:iso;}          // DD/MM
@@ -573,8 +578,10 @@ function accrueRecurring(){   // recurring L2/L3: record a miss on each passed u
       }
       d.setDate(d.getDate()+1);
     }
-    const period=t.level==="3"?7:(t.repeat==="m"?31:366);
-    if(daysBetween(lastDone||start,today)>=period){          // abandoned a full cycle -> skip
+    const ref=lastDone||start;
+    const cycleEnd = t.level==="3" ? ymd(new Date(new Date(ref+"T00:00").getTime()+7*86400000))
+                    : (t.repeat==="m" ? addMonths(ref,1) : addYears(ref,1));
+    if(today>=cycleEnd){                                          // abandoned a full cycle -> skip
       t.skipped="1";t.skipStart=start;t.skipEnd=today;tCh=true;
       events.push({id:uid(),task_id:t.id,level:t.level,date:today,kind:"skip",mode:cur,timer:"0",played_at:"",elapsed_sec:"0",created:new Date().toISOString()});evCh=true;
     }
@@ -646,7 +653,9 @@ function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;save
 function deleteTask(id){const t=byId(id);if(!t)return;
   if(t.level==="1"&&!confirm("Delete a level-1 daily anchor? Its history stays in events/notes."))return;
   snapshot();
-  tasks=tasks.filter(x=>x.id!==id);saveTasks();render();}
+  const root=t.origin||t.id;                                 // delete the original AND all carried copies
+  tasks=tasks.filter(x=>x.id!==root&&x.origin!==root);
+  saveTasks();render();}
 
 /* ---------- reorder / level-mode / collapse / hour ---------- */
 function siblingsOf(id){const t=byId(id);if(!t)return[];return tasks.filter(x=>x.mode===t.mode&&x.level===t.level);}
@@ -743,6 +752,23 @@ let toastTid=null;
 function toast(msg){let el=document.getElementById("toast");
   if(!el){el=document.createElement("div");el.id="toast";document.body.appendChild(el);}
   el.textContent=msg;el.classList.add("on");clearTimeout(toastTid);toastTid=setTimeout(()=>el.classList.remove("on"),1600);}
+
+/* ---------- reminder: ring 3s + vibrate 1 minute before a task's set hour (works while the app is open) ---------- */
+const alerted=new Set();
+function hmMinus1(hm){let[h,m]=hm.split(":").map(Number);m-=1;if(m<0){m=59;h=(h+23)%24;}return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");}
+function ringBell(){
+  try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400,150,400]);}catch(e){}
+  try{const rate=8000,beep=beepSamples(rate,3),url=URL.createObjectURL(new Blob([wav8(rate,beep)],{type:"audio/wav"}));
+    const a=new Audio(url);a.play().catch(()=>{});a.addEventListener("ended",()=>URL.revokeObjectURL(url));}catch(e){}
+}
+function remindTick(){
+  const now=nowHM(),today=todayStr(),cur=settings.mode,wd=weekdayIdxOf(today);
+  tasks.filter(t=>t.mode===cur&&t.hour&&occursOn(t,today,wd)&&!eventFor(t.id,today)).forEach(t=>{
+    const k=t.id+"|"+today;
+    if(hmMinus1(t.hour)===now&&!alerted.has(k)){alerted.add(k);ringBell();toast("⏰ "+(t.text||"task")+" at "+t.hour);}
+  });
+}
+setInterval(remindTick,15000);
 
 const listEl=document.getElementById("list");
 listEl.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;
@@ -891,63 +917,64 @@ document.getElementById("btnNext").onclick=()=>{
 };
 
 /* ---------- mode_switch (discipline stats, per-mode dataset) ---------- */
+let statWin="t";
+const WINMAP={t:1,"7":7,"30":30,"360":360,all:"all"},WINLBL={t:"today","7":"last 7d","30":"last 30d","360":"last 360d",all:"all time"};
 function openStats(){
-  const disc = settings.mode==="discipline", today=todayStr(), wk=weekDates(), cur=settings.mode;
-  const mev = events.filter(e=>e.mode===cur);                        // this mode's events (ALL tasks, timer + stopwatch)
-  // per-level discipline = % of accountable tasks that are checked. accountable = done + missed (past) + today's still-open
-  function levelStats(lv){
-    const done=mev.filter(e=>e.level===lv&&e.kind==="done").length;
-    const miss=mev.filter(e=>e.level===lv&&e.kind==="miss").length;
-    const sk=mev.filter(e=>e.level===lv&&e.kind==="skip").length;
+  const disc = settings.mode==="discipline", today=todayStr(), cur=settings.mode;
+  // ratio of checked occurrences for one level on one day
+  const dayLevelRatio=(D,L)=>{
+    const dn=events.filter(e=>e.mode===cur&&e.level===L&&e.date===D&&e.kind==="done").length;
+    const ms=events.filter(e=>e.mode===cur&&e.level===L&&e.date===D&&e.kind==="miss").length;
     let open=0;
-    tasks.filter(t=>t.mode===cur&&t.level===lv&&t.skipped!=="1").forEach(t=>{
-      if(!occursOn(t,today,weekdayIdxOf(today)))return;              // occurs today and not yet done?
-      if(!eventFor(t.id,today))open++;
-    });
-    const total=done+miss+open;
-    let base = total?Math.round(100*done/total):(sk?100:null);
-    let score = base==null?null:Math.max(0,Math.min(100,base-5*sk));   // each skip costs 5%
-    return {done,total,score,skips:sk};
-  }
-  const L={1:levelStats("1"),2:levelStats("2"),3:levelStats("3")};
-  const W={1:50,2:30,3:20};
-  let num=0,den=0;[1,2,3].forEach(l=>{if(L[l].score!=null){num+=W[l]*L[l].score;den+=W[l];}});
-  const overall = den?Math.round(num/den):null;                      // weighted avg, renormalized among levels that have data
+    if(D===today)tasks.filter(t=>t.mode===cur&&t.level===L&&t.skipped!=="1"&&occursOn(t,today,weekdayIdxOf(today))).forEach(t=>{if(!eventFor(t.id,today))open++;});
+    const tot=dn+ms+open;return tot?dn/tot:null;
+  };
+  const daySkips=D=>events.filter(e=>e.mode===cur&&e.date===D&&e.kind==="skip").length;
+  // one day's TOTAL: weighted level avg (50/30/20 renormalized), then −5% per skip that day
+  const dayTotal=D=>{const W={1:50,2:30,3:20};let num=0,den=0;
+    [1,2,3].forEach(L=>{const r=dayLevelRatio(D,String(L));if(r!=null){num+=W[L]*r*100;den+=W[L];}});
+    const sk=daySkips(D);
+    if(den)return Math.max(0,Math.min(100,Math.round(num/den-5*sk)));
+    return sk?Math.max(0,100-5*sk):null;};
+  // window of days
+  const win=WINMAP[statWin];let start;
+  if(win==="all"){const ds=events.filter(e=>e.mode===cur&&e.date).map(e=>e.date).concat(tasks.filter(t=>t.mode===cur&&t.date).map(t=>t.date));start=ds.length?ds.sort()[0]:today;}
+  else start=ymd(new Date(Date.now()-(win-1)*86400000));
+  const days=[];for(let d=new Date(start+"T00:00");ymd(d)<=today;d.setDate(d.getDate()+1))days.push(ymd(d));
+  const avg=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):null;
+  const overall=avg(days.map(dayTotal).filter(x=>x!=null));
+  const levelWin=L=>avg(days.map(D=>{const r=dayLevelRatio(D,String(L));return r==null?null:Math.round(r*100);}).filter(x=>x!=null));
+  const s1=levelWin("1"),s2=levelWin("2"),s3=levelWin("3");
+  const skTot=events.filter(e=>e.mode===cur&&e.kind==="skip"&&(win==="all"||e.date>=start)).length;
   const show=s=>s==null?'<span class="mut">—</span>':s+'%';
-  const line=(lv,name,w)=>`<div class="stat"><span>level ${lv} · ${name} <span class="mut">${w}%</span></span><b>${show(L[lv].score)}${L[lv].total?` <span class="mut">(${L[lv].done}/${L[lv].total})</span>`:''}${L[lv].skips?` <span class="mut">−${L[lv].skips*5} skip</span>`:''}</b></div>`;
-
-  const l1=tasks.filter(t=>t.level==="1"&&t.mode===cur);
-  const l1rows = l1.length ? l1.map(t=>{
-      const cnt=wk.filter(d=>eventFor(t.id,d)).length;
-      const dots=wk.map(d=>`<span class="wd${eventFor(t.id,d)?' on':''}${d===today?' td':''}"></span>`).join("");
-      return `<div class="l1row"><span class="l1t">${escAttr(t.text||"(unnamed)")}</span>
-        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span></span></div>`;
-    }).join("") : '<div class="mut" style="font-size:11px;padding:4px 2px">no level-1 anchors yet</div>';
+  const winBtn=(w,l)=>`<button class="${statWin===w?'sel':''}" onclick="setWin('${w}')">${l}</button>`;
 
   openModal(`<h3>mode_switch <span class="x"><button onclick="closeModal()">✕</button></span></h3>
     <div class="modesw"><button class="${disc?'':'sel'}" onclick="setMode('experiment')">experiment</button><button class="${disc?'sel':''}" onclick="setMode('discipline')">discipline</button></div>
-    <div class="hint" style="margin:0 0 8px">${disc?'Discipline mode — its own dataset; counting resumes from where you left it.':'Experiment mode — its own dataset; free to test, and clearable below.'}</div>
+    <div class="modesw win" style="margin-top:6px">${winBtn("t","t")}${winBtn("7","7")}${winBtn("30","30")}${winBtn("360","360")}${winBtn("all","all")}</div>
+    <div class="hint" style="margin:6px 0">${WINLBL[statWin]}${statWin==="t"?" — the day's total (levels weighted, skips −5% each)":" — average of each day's total"}</div>
 
     <div class="stat"><span><b>Discipline</b> <span class="mut">(L1·50 L2·30 L3·20)</span></span><b>${overall==null?'—':overall+'%'}</b></div>
-    ${line(1,"daily",50)}
-    ${line(2,"scheduled",30)}
-    ${line(3,"quick",20)}
+    <div class="stat"><span>level 1 · daily <span class="mut">50%</span></span><b>${show(s1)}</b></div>
+    <div class="stat"><span>level 2 · scheduled <span class="mut">30%</span></span><b>${show(s2)}</b></div>
+    <div class="stat"><span>level 3 · quick <span class="mut">20%</span></span><b>${show(s3)}</b></div>
+    <div class="stat"><span>skips in window</span><b>${skTot}${skTot?` <span class="mut">(−5% each/day)</span>`:''}</b></div>
 
-    <div class="lvhead lv1">▮ level 1 · daily anchors — this week</div>
-    ${l1rows}
-    <div class="hint" style="margin-top:4px">dots = Mon→Sun done · X/7 weekly goal</div>
-
-    ${!disc?`<div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">clear ${settings.mode} data</button></div>`:''}
-    <div class="hint">Discipline = the % of your tasks you check off, per level (all tasks count — timer and stopwatch alike). Each level's score blends into the total with a fixed weight — L1 50%, L2 30%, L3 20% — renormalized across the levels you actually have tasks in. Unchecked tasks copy to the next day; the miss stays on the day it was due. Experiment & discipline keep <b>separate</b> tasks and data.</div>`);
+    ${!disc?`<div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">reset experiment</button></div>`:''}
+    <div class="hint">Each <b>day</b> gets a total: the level scores (% of that level's tasks checked that day) blended L1·50 L2·30 L3·20 — renormalized across levels that had tasks — minus 5% per skip that day. A multi-day window is the <b>average of those daily totals</b>. Experiment & discipline keep <b>separate</b> tasks and data.</div>`);
 }
 document.getElementById("btnStats").onclick=openStats;
+window.setWin=function(w){statWin=w;openStats();};
 window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";weekOffset=0;saveSettings();rollover();catchUp();accrueRecurring();openStats();render();};
 window.clearStats=function(){
   if(settings.mode==="discipline"){toast("switch to experiment to clear");return;}
-  if(!confirm("Delete ALL experiment stats data? Tasks and notes stay. This can't be undone."))return;
-  events=events.filter(e=>e.mode!=="experiment");saveEvents();
-  tasks.forEach(t=>{if(t.mode==="experiment"&&t.skipped==="1"){t.skipped="0";t.skipStart="";t.skipEnd="";}});saveTasks();
-  settings.lastRoll_experiment="";saveSettings();openStats();render();toast("experiment data cleared");
+  if(!confirm("Reset ALL experiment data — every task, completion and note? This is a full wipe and can't be undone."))return;
+  const ids=new Set(tasks.filter(t=>t.mode==="experiment").map(t=>t.id));
+  tasks=tasks.filter(t=>t.mode!=="experiment");
+  events=events.filter(e=>e.mode!=="experiment");
+  notes=notes.filter(n=>!ids.has(n.task_id));
+  settings.lastRoll_experiment="";
+  saveTasks();saveEvents();saveNotes();saveSettings();closeModal();render();toast("experiment reset");
 };
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
 
