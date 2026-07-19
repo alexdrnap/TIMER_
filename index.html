@@ -100,6 +100,13 @@
   .lp1.on{color:var(--bg);background:var(--l1);border-color:var(--l1)}
   .lp2.on{color:var(--bg);background:var(--l2);border-color:var(--l2)}
   .lp3.on{color:var(--bg);background:var(--l3);border-color:var(--l3)}
+  .grip{flex:0 0 auto;margin-left:auto;width:34px;height:24px;display:flex;align-items:center;justify-content:center;
+    color:var(--l2);font-size:16px;cursor:grab;touch-action:none;border:1px solid #243b4d;border-radius:5px;background:#12202b}
+  .task.frozen,.branch.frozen{opacity:.72}
+  .task.frozen input,.task.frozen button,.branch.frozen input,.branch.frozen button{pointer-events:none}
+  .frozenbar{background:#241a10;border:1px solid #4a3a1c;color:var(--l1);border-radius:6px;padding:3px 8px;font-size:11px;margin:2px 0}
+  #btnMove.on{background:#12202b;color:var(--l2);outline:1px solid var(--l2)}
+  #btnPrevWk,#btnNextWk{width:24px;padding:0;color:var(--dim)}
   .tag{font-size:10px;border-radius:4px;padding:0 4px}
   .tag.over{color:#ff9b96;border:1px solid #5a2f2c}
   .empty{color:var(--faint);text-align:center;padding:24px 10px;font-size:12px}
@@ -176,6 +183,7 @@
     <button id="btnRedo" title="redo">↷</button>
     <button id="btnDel" class="del">🗑</button>
     <button id="btnLvl" title="set task level">①②③</button>
+    <button id="btnMove" title="move / reorder tasks">⠿</button>
     <button id="btnMore" title="data & sound">⋯</button>
     <button id="btnConnect">connect</button>
     <button id="btnReload" title="reload">⟳</button>
@@ -186,6 +194,8 @@
 <div class="tabs" id="tabs"></div>
 
 <div class="subbar">
+  <button id="btnPrevWk" title="previous week">‹</button>
+  <button id="btnNextWk" title="next week">›</button>
   <button class="next" id="btnNext">next ▸ future</button>
   <span class="count" id="count"></span>
   <label class="tickctl" title="per-second tick while a task runs">tick<input type="checkbox" id="tickChk"></label>
@@ -213,7 +223,7 @@ let dbDir=null,timerDir=null;
 let tasks=[],events=[],notes=[];
 let settings={mode:"experiment",tickOn:false,tickVol:1,lastRoll_experiment:"",lastRoll_discipline:""};
 let currentDay=jsDayToIdx(new Date().getDay());
-let deleteMode=false, levelMode=false;
+let deleteMode=false, levelMode=false, moveMode=false, weekOffset=0;
 const collapsed=new Set();               // task/branch ids whose children are hidden
 let dragId=null;
 function byOrder(a,b){return (+a.sort)-(+b.sort);}
@@ -228,7 +238,7 @@ function ymd(dt){return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,
 function todayStr(){return ymd(new Date());}
 function nowHM(){return new Date().toTimeString().slice(0,5);}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
-function weekDates(){const d=new Date();const idx=jsDayToIdx(d.getDay());const mon=new Date(d);mon.setDate(d.getDate()-idx);
+function weekDates(off){off=off||0;const d=new Date();const idx=jsDayToIdx(d.getDay());const mon=new Date(d);mon.setDate(d.getDate()-idx+off*7);
   const out=[];for(let i=0;i<7;i++){const x=new Date(mon);x.setDate(mon.getDate()+i);out.push(ymd(x));}return out;}
 function weekdayIdxOf(dateStr){return jsDayToIdx(new Date(dateStr+"T00:00").getDay());}
 function fmtD(iso){if(!iso)return"";const p=iso.split("-");return p.length===3?p[2]+"/"+p[1]+"/"+p[0]:iso;}   // DD/MM/YYYY
@@ -301,8 +311,9 @@ function eventMutable(e){return e&&mutable(Date.parse(e.created||""));}
 function noteMutable(n){return n&&mutable(Date.parse((n.date||"")+"T"+(n.time||"00:00:00")));}
 function normTask(o){return{id:o.id||uid(),parent:o.parent||"",level:(o.level==="1"||o.level==="2"||o.level==="3")?o.level:(o.parent?"":"3"),
   text:o.text||"",date:o.date||"",hour:o.hour||"",dur:o.dur||"",done:o.done==="1"?"1":"0",acc:o.acc||"0",
+  mode:(o.mode==="discipline")?"discipline":"experiment",origin:o.origin||"",
   sort:o.sort||"0",created:o.created||new Date().toISOString()};}
-const TASK_H=["id","parent","level","text","date","hour","dur","done","acc","sort","created"];
+const TASK_H=["id","parent","level","text","date","hour","dur","done","acc","mode","origin","sort","created"];
 const EVT_H =["id","task_id","level","date","kind","mode","timer","played_at","elapsed_sec","created"];
 const NOTE_H=["id","task_id","task_text","level","date","time","note","audio"];
 async function saveTasks(){if(timerDir)await writeFile(timerDir,TASKS_CSV,toCSV(TASK_H,tasks));}
@@ -407,8 +418,12 @@ function play(id,date){
   if(dur>0)armAudio(key,dur);           // beeps 5s at the end — baked so it fires even when the screen is locked
   render();
 }
-function elapsedOf(st){return Math.floor(st.before+(st.paused?0:(Date.now()-st.t0)/1000));}
-function fmtElapsed(st){const el=elapsedOf(st);return st.dur>0?(el<st.dur?"-"+mmss(st.dur-el):"+"+mmss(el-st.dur)):mmss(el);}
+function elapsedOf(st){let e=st.before+(st.paused?0:(Date.now()-st.t0)/1000);
+  if(st.dur>0&&e>=st.dur)e=st.dur;                    // timer never counts past its duration
+  return Math.floor(e);}
+function fmtElapsed(st){const el=elapsedOf(st);
+  if(st.dur>0)return el<st.dur?"-"+mmss(st.dur-el):"00:00";   // stops at 00:00, no positive count
+  return mmss(el);}
 function togglePause(key){
   const st=timers.get(key);if(!st)return;
   if(st.paused){                                   // resume
@@ -424,6 +439,9 @@ function togglePause(key){
   render();
 }
 function tick(key,st){
+  if(st.dur>0 && !st.ended && (st.before+(Date.now()-st.t0)/1000)>=st.dur){    // reached the end
+    st.ended=true;clearInterval(st.iv);st.iv=null;render();return;
+  }
   const disp=document.querySelector(`.elapsed[data-run="${key}"]`);
   if(disp){disp.textContent=fmtElapsed(st);disp.classList.toggle("alarm",st.dur>0&&elapsedOf(st)>=st.dur);}
 }
@@ -454,25 +472,32 @@ function undone(id,date){
   render();return true;
 }
 function missEvent(t,date){return {id:uid(),task_id:t.id,level:t.level,date,kind:"miss",mode:settings.mode,timer:"1",played_at:"",elapsed_sec:"0",created:new Date().toISOString()};}
-function rollover(){                          // at day's end, unchecked tasks pass to the next day; the miss stays on the old day (timer tasks only)
-  const today=todayStr(),cur=settings.mode;let changed=false,evChanged=false;
-  // L2/L3 dated tasks: roll forward; record a miss on the passed day for timer tasks
-  tasks.forEach(t=>{
-    if(t.parent||t.level==="1"||!t.date)return;
-    if(t.date<today){
-      if(isTimerTask(t)&&!eventFor(t.id,t.date)&&!missFor(t.id,t.date)){events.push(missEvent(t,t.date));evChanged=true;}
-      t.date=today;changed=true;                            // pass to today (still visible)
+function copyForward(t,date,origin){       // deep-copy a task (with its branch subtree) onto a new day
+  const nid=uid();
+  tasks.push(normTask({id:nid,level:t.level,text:t.text,date,hour:t.hour,dur:t.dur,mode:t.mode,origin,sort:t.sort}));
+  const copyKids=(srcId,newParent)=>branchesOf(srcId).forEach(b=>{const bid=uid();
+    tasks.push(normTask({id:bid,parent:newParent,level:"",text:b.text,dur:b.dur,mode:b.mode,sort:b.sort}));copyKids(b.id,bid);});
+  copyKids(t.id,nid);return nid;
+}
+function rollover(){                          // new day: unchecked tasks get COPIED to the new day (originals stay); the miss stays on the old day
+  const today=todayStr(),cur=settings.mode,key="lastRoll_"+cur,last=settings[key];
+  let evCh=false,tCh=false;
+  if(last&&last<today){
+    let d=new Date(last+"T00:00");
+    while(true){const ds=ymd(d);if(ds>=today)break;
+      const nd=new Date(d);nd.setDate(nd.getDate()+1);const nds=ymd(nd);
+      tasks.filter(t=>!t.parent&&t.mode===cur&&t.date===ds).forEach(t=>{
+        if(!eventFor(t.id,ds)){                                       // unchecked that day
+          if(!missFor(t.id,ds)){events.push(missEvent(t,ds));evCh=true;}
+          const org=t.origin||t.id;
+          if(!tasks.some(x=>x.origin===org&&x.date===nds)){copyForward(t,nds,org);tCh=true;}   // carry a copy forward
+        }
+      });
+      tasks.filter(t=>t.level==="1"&&t.mode===cur).forEach(t=>{if(!eventFor(t.id,ds)&&!missFor(t.id,ds)){events.push(missEvent(t,ds));evCh=true;}});
+      d=nd;
     }
-  });
-  // L1 timer anchors: a missed day (no done event this mode) is a miss — backfill bounded by this mode's lastRoll
-  const key="lastRoll_"+cur, last=settings[key];
-  if(last){let d=new Date(last+"T00:00");d.setDate(d.getDate()+1);
-    for(let i=0;i<60;i++){const ds=ymd(d);if(ds>=today)break;
-      tasks.filter(t=>t.level==="1"&&isTimerTask(t)).forEach(t=>{
-        if(!eventFor(t.id,ds)&&!missFor(t.id,ds)){events.push(missEvent(t,ds));evChanged=true;}});
-      d.setDate(d.getDate()+1);}}
-  settings[key]=today;
-  saveSettings();if(changed)saveTasks();if(evChanged)saveEvents();
+  }
+  settings[key]=today;saveSettings();if(evCh)saveEvents();if(tCh)saveTasks();
 }
 
 /* ---------- undo / redo (structural: add / delete / reset) ---------- */
@@ -487,16 +512,16 @@ function doRedo(){if(!redoStack.length){toast("nothing to redo");return;}
 function byId(id){return tasks.find(t=>t.id===id);}
 function branchesOf(id){return tasks.filter(t=>t.parent===id);}
 function addTask(){                                        // new task defaults to level 3
-  snapshot();
-  const t=normTask({id:uid(),level:"3",text:"",date:todayStr(),hour:"",sort:String(tasks.length)});
-  tasks.push(t);saveTasks();currentDay=weekdayIdxOf(t.date);render();
+  snapshot();weekOffset=0;
+  const t=normTask({id:uid(),level:"3",text:"",date:todayStr(),hour:"",mode:settings.mode,sort:String(tasks.length)});
+  tasks.push(t);saveTasks();currentDay=jsDayToIdx(new Date().getDay());render();
   setTimeout(()=>{const el=document.querySelector(`.txt input[data-id="${t.id}"]`);if(el)el.focus();},40);
 }
 function branchDepth(t){return t&&t.parent?1+branchDepth(byId(t.parent)):0;}
 function addBranch(parent){
   const p=byId(parent);if(branchDepth(p)>=6)return;        // up to 6 branching levels deep (count is unlimited)
   snapshot();
-  const t=normTask({id:uid(),parent,level:"",text:"",sort:String(tasks.length)});
+  const t=normTask({id:uid(),parent,level:"",text:"",mode:p?p.mode:settings.mode,sort:String(tasks.length)});
   tasks.push(t);saveTasks();render();
   setTimeout(()=>{const el=document.querySelector(`.txt input[data-id="${t.id}"]`);if(el)el.focus();},40);
 }
@@ -543,10 +568,11 @@ function parseHM(s){s=(s||"").trim();if(!s)return "";                  // empty 
 
 /* ---------- render ---------- */
 function setConn(txt,ok){const c=document.getElementById("conn");c.textContent=txt;c.classList.toggle("ok",!!ok);}
+let FROZEN=false;                          // read-only view (past day in discipline mode)
 function renderTabs(){
-  const wk=weekDates(),todayIdx=jsDayToIdx(new Date().getDay()),tabs=document.getElementById("tabs");tabs.innerHTML="";
+  const wk=weekDates(weekOffset),todayStr_=todayStr(),tabs=document.getElementById("tabs");tabs.innerHTML="";
   DAYLABEL.forEach((d,i)=>{const b=document.createElement("div");
-    b.className="tab"+(i===currentDay?" active":"")+(i===todayIdx?" today":"");
+    b.className="tab"+(i===currentDay?" active":"")+(wk[i]===todayStr_?" today":"");
     b.innerHTML=d+"<small>"+fmtDM(wk[i])+"</small>";b.onclick=()=>{currentDay=i;render();};tabs.appendChild(b);});
 }
 function render(){
@@ -554,30 +580,30 @@ function render(){
   const list=document.getElementById("list");list.innerHTML="";
   document.getElementById("btnDel").classList.toggle("on",deleteMode);
   document.getElementById("btnLvl").classList.toggle("on",levelMode);
-  const wk=weekDates(),tabDate=wk[currentDay],today=todayStr(),weekEnd=wk[6];
-  // level 3 & 2 that belong on this weekday
-  const inTab=t=>{ if(t.level==="1")return false;
-    if(weekdayIdxOf(t.date)!==currentDay)return false;
-    if(t.date<today)return true;                 // overdue
-    if(t.date<=weekEnd)return true;              // this week
-    return false;};                              // far future -> only in "next"
-  const l3=tasks.filter(t=>t.level==="3"&&inTab(t)).sort(byOrder);
-  const l2=tasks.filter(t=>t.level==="2"&&inTab(t)).sort(byOrder);
-  const l1=tasks.filter(t=>t.level==="1").sort(byOrder);   // daily, every tab
+  document.getElementById("btnMove").classList.toggle("on",moveMode);
+  const wk=weekDates(weekOffset),tabDate=wk[currentDay],today=todayStr(),cur=settings.mode;
+  FROZEN = (tabDate<today && cur==="discipline");           // past days are read-only in discipline mode
+  const mine=t=>t.mode===cur;                               // modes are fully separate
+  const l3=tasks.filter(t=>mine(t)&&t.level==="3"&&t.date===tabDate).sort(byOrder);
+  const l2=tasks.filter(t=>mine(t)&&t.level==="2"&&t.date===tabDate).sort(byOrder);
+  const l1=tasks.filter(t=>mine(t)&&t.level==="1").sort(byOrder);   // daily, shown on every day
   let any=l3.length+l2.length+l1.length;
-  if(l3.length){list.appendChild(grp("l3","level 3 · quick"));l3.forEach(t=>list.appendChild(renderTask(t,t.date)));}
-  if(l2.length){list.appendChild(grp("l2","level 2 · scheduled"));l2.forEach(t=>list.appendChild(renderTask(t,t.date)));}
+  if(FROZEN){const f=document.createElement("div");f.className="frozenbar";f.textContent="🔒 past day (discipline) — read-only";list.appendChild(f);}
+  if(l3.length){list.appendChild(grp("l3","level 3 · quick"));l3.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
+  if(l2.length){list.appendChild(grp("l2","level 2 · scheduled"));l2.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
   if(l1.length){list.appendChild(grp("l1","level 1 · daily anchor"));l1.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
-  if(!any)list.innerHTML='<div class="empty">nothing for '+DAYLABEL[currentDay]+' — hit ＋ task</div>';
-  const fut=tasks.filter(t=>t.level==="2"&&t.date>today).length;
+  if(!any&&!FROZEN)list.innerHTML='<div class="empty">nothing for '+fmtDM(tabDate)+' — hit ＋ task</div>';
+  else if(!any)list.appendChild(Object.assign(document.createElement("div"),{className:"empty",textContent:"no tasks on "+fmtDM(tabDate)}));
+  const fut=tasks.filter(t=>mine(t)&&t.level==="2"&&t.date>today).length;
   document.getElementById("btnNext").textContent="next ▸ "+fut+" future";
-  document.getElementById("count").textContent=any+" shown";
+  document.getElementById("count").textContent=(weekOffset?fmtDM(tabDate)+" · ":"")+any+" shown";
 }
 function grp(cls,label){const d=document.createElement("div");d.className="grp "+cls;d.innerHTML='<span class="dot"></span>'+label;return d;}
 function byTime(a,b){if((a.date||"")!==(b.date||""))return (a.date||"")<(b.date||"")?-1:1;if(a.hour!==b.hour)return a.hour<b.hour?-1:1;return (+a.sort)-(+b.sort);}
 function isOverdue(t,date){return !eventFor(t.id,date)&&(date<todayStr()||(date===todayStr()&&t.hour&&t.hour<nowHM()));}
 function hasNote(id){return notes.some(n=>n.task_id===id);}
 function editCluster(id,isTask){
+  if(moveMode)return `<span class="grip" data-grip="${id}" title="hold & drag to reorder">⠿</span>`;
   if(deleteMode)return `<button class="xdel" data-act="del" data-id="${id}">✕</button>`;
   if(levelMode&&isTask){const t=byId(id);return `<span class="lvlpick">`+
     ["1","2","3"].map(L=>`<button class="lp lp${L}${t.level===L?' on':''}" data-act="setlvl" data-id="${id}" data-l="${L}">${L}</button>`).join("")+`</span>`;}
@@ -586,29 +612,29 @@ function editCluster(id,isTask){
          `<button class="brc" data-act="branch" data-id="${id}" title="${isTask?'add branch':'sub-branch'}" ${(isTask||branchDepth(byId(id))<6)?'':'disabled'}>+⑂</button>`+
          `<button class="rst" data-act="reset" data-id="${id}" title="clear">↺</button>`;
 }
-function expBtn(id){const kids=branchesOf(id);if(!kids.length)return "";const c=collapsed.has(id);
+function expBtn(id){const kids=branchesOf(id);if(!kids.length||moveMode)return "";const c=collapsed.has(id);
   return `<button class="exp" data-act="collapse" data-id="${id}" title="${c?'expand':'collapse'}">${c?'▸':'▾'}</button>`;}
 function renderTask(t,occDate){
-  const key=runKey(t.id,occDate),st=timers.get(key),running=!!st,paused=running&&st.paused;
+  const key=runKey(t.id,occDate),st=timers.get(key),running=!!st,paused=running&&st.paused,ended=running&&st.ended;
   const isDone = !!eventFor(t.id,occDate);
-  const chkLock = isDone && (()=>{const ev=eventFor(t.id,occDate);return ev&&!eventMutable(ev);})();
-  const canPlay = playAllowed(t,occDate), isSW=!((parseFloat(t.dur)||0)>0), showHour=t.level!=="3";
-  const simple = deleteMode||levelMode;                     // in edit modes: hide play / timer / time / min
-  const cls=["task","l"+t.level,isSW?"mode-sw":"mode-timer"];if(isDone)cls.push("done");if(!isDone&&isOverdue(t,occDate))cls.push("overdue");if(dragId===t.id)cls.push("dragging");
+  const chkLock = (isDone && (()=>{const ev=eventFor(t.id,occDate);return ev&&!eventMutable(ev);})())||FROZEN;
+  const canPlay = playAllowed(t,occDate)&&!FROZEN, isSW=!((parseFloat(t.dur)||0)>0), showHour=t.level!=="3";
+  const simple = deleteMode||levelMode||moveMode;           // edit modes: hide play / timer / time / min
+  const cls=["task","l"+t.level,isSW?"mode-sw":"mode-timer"];if(isDone)cls.push("done");if(!isDone&&!FROZEN&&isOverdue(t,occDate))cls.push("overdue");if(dragId===t.id)cls.push("dragging");if(FROZEN)cls.push("frozen");
   const wrap=document.createElement("div");
   const el=document.createElement("div");el.className=cls.join(" ");el.dataset.tid=t.id;
   el.innerHTML=`<div class="row">
-    ${simple?'':`<input class="ck" type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} ${chkLock?"disabled":""} title="${chkLock?'permanent (24h+)':'done'}">`}
+    ${simple?'':`<input class="ck" type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} ${chkLock?"disabled":""} title="${chkLock?'locked':'done'}">`}
     ${expBtn(t.id)}
-    <span class="txt"><input data-act="text" data-id="${t.id}" value="${escAttr(t.text)}" placeholder="task…"></span>
-    ${simple?'':(running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`
+    <span class="txt"><input data-act="text" data-id="${t.id}" value="${escAttr(t.text)}" placeholder="task…" ${FROZEN?"disabled":""}></span>
+    ${simple?'':(running?`<span class="elapsed${paused?' paused':''}${ended?' alarm':''}" data-run="${key}">${fmtElapsed(st)}</span>`
       :(isSW&&(+t.acc>0)?`<span class="elapsed sw" title="stored time">${mmss(+t.acc)}</span>`:''))}
-    ${(!simple&&showHour)?`<input class="hr" type="time" data-act="hour" data-id="${t.id}" value="${escAttr(t.hour)}">`:''}
-    ${simple?'':`<input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="decimal">`}
+    ${(!simple&&showHour)?`<input class="hr" type="time" data-act="hour" data-id="${t.id}" value="${escAttr(t.hour)}" ${FROZEN?"disabled":""}>`:''}
+    ${simple?'':`<input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="decimal" ${FROZEN?"disabled":""}>`}
     ${editCluster(t.id,true)}
-    ${simple?'':(running
-      ? `<button class="play running" data-act="pause" data-id="${t.id}" data-date="${occDate}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
-      : `<button class="play" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||!canPlay)?"disabled":""} title="${!canPlay&&t.hour?('starts '+t.hour):''}">▶</button>`)}
+    ${simple?'':(ended?`<button class="play" disabled title="time's up — check done">⏹</button>`
+      :running?`<button class="play running" data-act="pause" data-id="${t.id}" data-date="${occDate}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
+      :`<button class="play" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||!canPlay)?"disabled":""} title="${!canPlay&&t.hour?('starts '+t.hour):''}">▶</button>`)}
   </div>`;
   wrap.appendChild(el);
   const kids=branchesOf(t.id);
@@ -617,20 +643,20 @@ function renderTask(t,occDate){
   return wrap;
 }
 function renderBranch(b){
-  const key=runKey(b.id,"b"),st=timers.get(key),running=!!st,paused=running&&st.paused,isDone=b.done==="1";
-  const simple = deleteMode||levelMode;
+  const key=runKey(b.id,"b"),st=timers.get(key),running=!!st,paused=running&&st.paused,ended=running&&st.ended,isDone=b.done==="1";
+  const simple = deleteMode||levelMode||moveMode;
   const wrap=document.createElement("div");
-  const el=document.createElement("div");el.className="branch"+(isDone?" done":"")+(dragId===b.id?" dragging":"");el.dataset.bid=b.id;
+  const el=document.createElement("div");el.className="branch"+(isDone?" done":"")+(dragId===b.id?" dragging":"")+(FROZEN?" frozen":"");el.dataset.bid=b.id;
   el.innerHTML=`
-    ${simple?'':`<input class="ck" type="checkbox" data-act="bdone" data-id="${b.id}" ${isDone?"checked":""} title="done">`}
+    ${simple?'':`<input class="ck" type="checkbox" data-act="bdone" data-id="${b.id}" ${isDone?"checked":""} ${FROZEN?"disabled":""} title="done">`}
     ${expBtn(b.id)}
-    <span class="txt"><input data-act="btext" data-id="${b.id}" value="${escAttr(b.text)}" placeholder="branch…"></span>
-    ${simple?'':(running?`<span class="elapsed${paused?' paused':''}" data-run="${key}">${fmtElapsed(st)}</span>`:'')}
-    ${simple?'':`<input class="dur" data-act="dur" data-id="${b.id}" value="${escAttr(b.dur)}" placeholder="min" inputmode="decimal">`}
+    <span class="txt"><input data-act="btext" data-id="${b.id}" value="${escAttr(b.text)}" placeholder="branch…" ${FROZEN?"disabled":""}></span>
+    ${simple?'':(running?`<span class="elapsed${paused?' paused':''}${ended?' alarm':''}" data-run="${key}">${fmtElapsed(st)}</span>`:'')}
+    ${simple?'':`<input class="dur" data-act="dur" data-id="${b.id}" value="${escAttr(b.dur)}" placeholder="min" inputmode="decimal" ${FROZEN?"disabled":""}>`}
     ${editCluster(b.id,false)}
-    ${simple?'':(running
-      ? `<button class="play running" data-act="bpause" data-id="${b.id}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
-      : `<button class="play" data-act="bplay" data-id="${b.id}" ${isDone?"disabled":""}>▶</button>`)}`;
+    ${simple?'':(ended?`<button class="play" disabled title="time's up">⏹</button>`
+      :running?`<button class="play running" data-act="bpause" data-id="${b.id}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
+      :`<button class="play" data-act="bplay" data-id="${b.id}" ${isDone?"disabled":""}>▶</button>`)}`;
   wrap.appendChild(el);
   const kids=branchesOf(b.id);
   if(kids.length&&!collapsed.has(b.id)){const bc=document.createElement("div");bc.className="branches";kids.slice().sort(byOrder).forEach(k=>bc.appendChild(renderBranch(k)));wrap.appendChild(bc);}
@@ -666,24 +692,19 @@ listEl.addEventListener("change",e=>{const b=e.target.closest("[data-act]");if(!
   if(act==="bdone")toggleBranch(id,b.checked);
 });
 
-/* long-press a task/branch (not its controls) -> drag to reorder among siblings */
-let lpTimer=null,lpXY=null;
+/* drag the ⠿ handle (move mode) to reorder among siblings */
 function rowIdAt(x,y){const el=document.elementFromPoint(x,y);if(!el)return null;
   const r=el.closest("[data-tid],[data-bid]");return r?(r.dataset.tid||r.dataset.bid):null;}
 listEl.addEventListener("pointerdown",e=>{
-  const row=e.target.closest("[data-tid],[data-bid]");if(!row)return;
-  if(e.target.closest("button,input,textarea,select"))return;      // controls work normally; hold on the row body drags
-  const id=row.dataset.tid||row.dataset.bid;lpXY={x:e.clientX,y:e.clientY};
-  lpTimer=setTimeout(()=>{lpTimer=null;dragId=id;listEl.classList.add("dragging");
-    if(navigator.vibrate)navigator.vibrate(15);render();},380);
+  const g=e.target.closest("[data-grip]");if(!g)return;
+  e.preventDefault();dragId=g.dataset.grip;snapshot();listEl.classList.add("dragging");
+  if(navigator.vibrate)navigator.vibrate(12);render();
 });
 listEl.addEventListener("pointermove",e=>{
-  if(dragId){e.preventDefault();const over=rowIdAt(e.clientX,e.clientY);
-    if(over&&over!==dragId&&reorder(dragId,over))render();return;}
-  if(lpTimer&&lpXY&&(Math.abs(e.clientX-lpXY.x)>12||Math.abs(e.clientY-lpXY.y)>12)){clearTimeout(lpTimer);lpTimer=null;}
+  if(!dragId)return;e.preventDefault();const over=rowIdAt(e.clientX,e.clientY);
+  if(over&&over!==dragId&&reorder(dragId,over))render();
 },{passive:false});
 ["pointerup","pointercancel","pointerleave"].forEach(ev=>listEl.addEventListener(ev,()=>{
-  if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
   if(dragId){dragId=null;listEl.classList.remove("dragging");saveTasks();render();}
 }));
 
@@ -777,51 +798,58 @@ document.getElementById("btnNext").onclick=()=>{
 
 /* ---------- mode_switch (discipline stats, per-mode dataset) ---------- */
 function openStats(){
-  const disc = settings.mode==="discipline", today=todayStr(), wk=weekDates();
-  const mev = events.filter(e=>e.mode===settings.mode && e.timer==="1");   // this mode, timer tasks only (stopwatch ignored)
-  const done=mev.filter(e=>e.kind==="done"), miss=mev.filter(e=>e.kind==="miss");
-  // per-level discipline: each checked timer task = +100, each missed (timer passed, unchecked) = -10; average, clamp 0-100
-  const levelScore=lv=>{const s=mev.filter(e=>e.level===lv).map(e=>e.kind==="miss"?-10:100);
-    return s.length?Math.max(0,Math.min(100,Math.round(s.reduce((a,b)=>a+b,0)/s.length))):null;};
-  const s1=levelScore("1"),s2=levelScore("2"),s3=levelScore("3");
-  const useS=s=>s==null?100:s;                                             // no data yet = nothing missed
-  const overall=Math.round(0.50*useS(s1)+0.30*useS(s2)+0.20*useS(s3));     // L1 50% · L2 30% · L3 20%
+  const disc = settings.mode==="discipline", today=todayStr(), wk=weekDates(), cur=settings.mode;
+  const mev = events.filter(e=>e.mode===cur);                        // this mode's events (ALL tasks, timer + stopwatch)
+  // per-level discipline = % of accountable tasks that are checked. accountable = done + missed (past) + today's still-open
+  function levelStats(lv){
+    const done=mev.filter(e=>e.level===lv&&e.kind==="done").length;
+    const miss=mev.filter(e=>e.level===lv&&e.kind==="miss").length;
+    let open=0;
+    tasks.filter(t=>!t.parent&&t.mode===cur&&t.level===lv).forEach(t=>{
+      if(lv!=="1"&&t.date!==today)return;                            // only today's live ones are still "open"
+      if(!eventFor(t.id, lv==="1"?today:t.date))open++;
+    });
+    const total=done+miss+open;
+    return {done,total,score: total?Math.round(100*done/total):null};
+  }
+  const L={1:levelStats("1"),2:levelStats("2"),3:levelStats("3")};
+  const W={1:50,2:30,3:20};
+  let num=0,den=0;[1,2,3].forEach(l=>{if(L[l].score!=null){num+=W[l]*L[l].score;den+=W[l];}});
+  const overall = den?Math.round(num/den):null;                      // weighted avg, renormalized among levels that have data
   const show=s=>s==null?'<span class="mut">—</span>':s+'%';
+  const line=(lv,name,w)=>`<div class="stat"><span>level ${lv} · ${name} <span class="mut">${w}%</span></span><b>${show(L[lv].score)}${L[lv].total?` <span class="mut">(${L[lv].done}/${L[lv].total})</span>`:''}</b></div>`;
 
-  const l1=tasks.filter(t=>t.level==="1");
+  const l1=tasks.filter(t=>t.level==="1"&&t.mode===cur);
   const l1rows = l1.length ? l1.map(t=>{
       const cnt=wk.filter(d=>eventFor(t.id,d)).length;
       const dots=wk.map(d=>`<span class="wd${eventFor(t.id,d)?' on':''}${d===today?' td':''}"></span>`).join("");
-      const tmev=mev.filter(e=>e.task_id===t.id),sc=tmev.length?Math.max(0,Math.min(100,Math.round(tmev.map(e=>e.kind==="miss"?-10:100).reduce((a,b)=>a+b,0)/tmev.length))):null;
       return `<div class="l1row"><span class="l1t">${escAttr(t.text||"(unnamed)")}</span>
-        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span><span class="l1o">${sc==null?'—':sc+'%'}</span></span></div>`;
+        <span class="l1w">${dots}<span class="l1c${cnt>=L1_TARGET?' ok':''}">${cnt}/7</span></span></div>`;
     }).join("") : '<div class="mut" style="font-size:11px;padding:4px 2px">no level-1 anchors yet</div>';
 
   openModal(`<h3>mode_switch <span class="x"><button onclick="closeModal()">✕</button></span></h3>
     <div class="modesw"><button class="${disc?'':'sel'}" onclick="setMode('experiment')">experiment</button><button class="${disc?'sel':''}" onclick="setMode('discipline')">discipline</button></div>
     <div class="hint" style="margin:0 0 8px">${disc?'Discipline mode — its own dataset; counting resumes from where you left it.':'Experiment mode — its own dataset; free to test, and clearable below.'}</div>
 
-    <div class="stat"><span><b>Discipline</b> <span class="mut">(L1·50% L2·30% L3·20%)</span></span><b>${overall}%</b></div>
-    <div class="stat"><span>level 1 · daily <span class="mut">50%</span></span><b>${show(s1)}</b></div>
-    <div class="stat"><span>level 2 · scheduled <span class="mut">30%</span></span><b>${show(s2)}</b></div>
-    <div class="stat"><span>level 3 · quick <span class="mut">20%</span></span><b>${show(s3)}</b></div>
-    <div class="stat"><span>checked / missed (timer tasks)</span><b>${done.length} / ${miss.length}</b></div>
-    <div class="stat"><span>total tracked time</span><b>${fmtDur(mev.reduce((a,e)=>a+(+e.elapsed_sec||0),0))}</b></div>
+    <div class="stat"><span><b>Discipline</b> <span class="mut">(L1·50 L2·30 L3·20)</span></span><b>${overall==null?'—':overall+'%'}</b></div>
+    ${line(1,"daily",50)}
+    ${line(2,"scheduled",30)}
+    ${line(3,"quick",20)}
 
     <div class="lvhead lv1">▮ level 1 · daily anchors — this week</div>
     ${l1rows}
-    <div class="hint" style="margin-top:4px">dots = Mon→Sun done · X/7 · % = this anchor's discipline (checked vs missed)</div>
+    <div class="hint" style="margin-top:4px">dots = Mon→Sun done · X/7 weekly goal</div>
 
     ${!disc?`<div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">clear ${settings.mode} data</button></div>`:''}
-    <div class="hint">Only <b>timer</b> tasks count (stopwatch never affects stats). A timer task that isn't checked after its time passes is a miss (−10); a checked one is +100. Unchecked tasks pass to the next day but the miss stays on the day it was due. Experiment & discipline keep <b>separate</b> data.</div>`);
+    <div class="hint">Discipline = the % of your tasks you check off, per level (all tasks count — timer and stopwatch alike). Each level's score blends into the total with a fixed weight — L1 50%, L2 30%, L3 20% — renormalized across the levels you actually have tasks in. Unchecked tasks copy to the next day; the miss stays on the day it was due. Experiment & discipline keep <b>separate</b> tasks and data.</div>`);
 }
 document.getElementById("btnStats").onclick=openStats;
-window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";saveSettings();rollover();openStats();render();};
+window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";weekOffset=0;saveSettings();rollover();openStats();render();};
 window.clearStats=function(){
   if(settings.mode==="discipline"){toast("switch to experiment to clear");return;}
-  if(!confirm("Delete ALL "+settings.mode+" stats data? Tasks and notes stay. This can't be undone."))return;
+  if(!confirm("Delete ALL experiment stats data? Tasks and notes stay. This can't be undone."))return;
   events=events.filter(e=>e.mode!=="experiment");saveEvents();
-  settings.lastRoll_experiment="";saveSettings();openStats();render();toast(settings.mode+" data cleared");
+  settings.lastRoll_experiment="";saveSettings();openStats();render();toast("experiment data cleared");
 };
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
 
@@ -859,13 +887,17 @@ function ensureTick(){
 }
 function tickActive(){for(const st of timers.values()){if(st.paused)continue;
   if(st.dur>0){if(elapsedOf(st)<st.dur)return true;}else return true;}return false;}   // timer: only until it ends; stopwatch: while running
+let tickPhase=0;
 function tickPulse(){
   if(!settings.tickOn||!tickCtx||!tickActive())return;
-  const vol=[0.05,0.14,0.34,0.7][settings.tickVol]||0.14;
-  const o=tickCtx.createOscillator(),g=tickCtx.createGain();o.type="triangle";o.frequency.value=1600;
-  o.connect(g);g.connect(tickCtx.destination);const t=tickCtx.currentTime;
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.002);g.gain.exponentialRampToValueAtTime(0.0001,t+0.03);
-  o.start(t);o.stop(t+0.05);
+  const vol=[0.04,0.11,0.26,0.5][settings.tickVol]||0.11;
+  const o=tickCtx.createOscillator(),g=tickCtx.createGain();
+  o.type="square";o.frequency.value=tickPhase?2100:1750;      // tick … tock … like an analog clock
+  tickPhase^=1;
+  const lp=tickCtx.createBiquadFilter();lp.type="lowpass";lp.frequency.value=3200;   // soften into a wooden "tock"
+  o.connect(lp);lp.connect(g);g.connect(tickCtx.destination);const t=tickCtx.currentTime;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.001);g.gain.exponentialRampToValueAtTime(0.0001,t+0.018);
+  o.start(t);o.stop(t+0.03);
 }
 function syncTickUI(){const c=document.getElementById("tickChk"),v=document.getElementById("tickVol");
   if(c)c.checked=settings.tickOn;if(v)v.value=String(settings.tickVol);}
@@ -877,8 +909,11 @@ document.getElementById("btnConnect").onclick=connect;
 document.getElementById("btnMore").onclick=openMore;
 document.getElementById("btnReload").onclick=async()=>{if(!timerDir){connect();return;}await loadAll();await loadSound();};
 document.getElementById("btnAdd").onclick=()=>{if(!timerDir){toast(HAS_FSA?"connect a folder first":"tap start first");return;}addTask();};
-document.getElementById("btnDel").onclick=()=>{deleteMode=!deleteMode;if(deleteMode)levelMode=false;render();};
-document.getElementById("btnLvl").onclick=()=>{levelMode=!levelMode;if(levelMode)deleteMode=false;render();};
+document.getElementById("btnDel").onclick=()=>{deleteMode=!deleteMode;if(deleteMode){levelMode=false;moveMode=false;}render();};
+document.getElementById("btnLvl").onclick=()=>{levelMode=!levelMode;if(levelMode){deleteMode=false;moveMode=false;}render();};
+document.getElementById("btnMove").onclick=()=>{moveMode=!moveMode;if(moveMode){deleteMode=false;levelMode=false;}render();};
+document.getElementById("btnPrevWk").onclick=()=>{weekOffset--;render();};
+document.getElementById("btnNextWk").onclick=()=>{weekOffset++;render();};
 document.getElementById("btnUndo").onclick=doUndo;
 document.getElementById("btnRedo").onclick=doRedo;
 if(!HAS_FSA){document.getElementById("btnConnect").textContent="start";document.getElementById("conn").textContent="tap start";}
