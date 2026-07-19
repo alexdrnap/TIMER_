@@ -652,9 +652,9 @@ window.saveRepeat=function(id){const t=byId(id);if(!t)return;
 window.clearRepeat=function(id){const t=byId(id);if(!t)return;t.repeat="";t.skipped="0";saveTasks();closeModal();render();};
 function nextOccurrence(t){const today=todayStr();let d=new Date(today+"T00:00");
   for(let i=0;i<400;i++){const ds=ymd(d);if(ds>=(t.date||"")&&occursOnRaw(t,ds,weekdayIdxOf(ds)))return ds;d.setDate(d.getDate()+1);}return t.date||today;}
-function upcomingOccurrences(){    // every task occurrence (all levels) in the next 7 days, chronological
+function upcomingOccurrences(){    // every task occurrence (all levels) in the next 30 days, chronological
   const cur=settings.mode,out=[],base=new Date(todayStr()+"T00:00");
-  for(let i=1;i<=7;i++){const d=new Date(base);d.setDate(d.getDate()+i);const ds=ymd(d),wd=weekdayIdxOf(ds);
+  for(let i=1;i<=30;i++){const d=new Date(base);d.setDate(d.getDate()+i);const ds=ymd(d),wd=weekdayIdxOf(ds);
     tasks.filter(t=>t.mode===cur&&t.skipped!=="1"&&occursOn(t,ds,wd)).forEach(t=>out.push({t,d:ds}));}
   out.sort((a,b)=>(a.d+(a.t.hour||""))<(b.d+(b.t.hour||""))?-1:1);return out;
 }
@@ -667,9 +667,9 @@ function gotoDate(iso){if(!iso)return;
   closeModal();render();}
 window.gotoDate=gotoDate;
 function openSkipped(){
-  const cur=settings.mode,wk7=ymd(new Date(Date.now()-7*86400000));
-  const list=tasks.filter(t=>t.mode===cur&&t.skipped==="1"&&(t.skipEnd||"")>=wk7).sort((a,b)=>(a.skipEnd||"").localeCompare(b.skipEnd||""));
-  openModal(`<h3>skipped — last 7 days (${list.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+  const cur=settings.mode,wk30=ymd(new Date(Date.now()-30*86400000));
+  const list=tasks.filter(t=>t.mode===cur&&t.skipped==="1"&&(t.skipEnd||"")>=wk30).sort((a,b)=>(a.skipEnd||"").localeCompare(b.skipEnd||""));
+  openModal(`<h3>skipped — last 30 days (${list.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
     <div class="hint">Recurring tasks abandoned for a full cycle. Each takes 5% off its level's discipline. Tap one to jump to its next occurrence; ↺ un-skips it.</div>
     ${list.length?list.map(t=>`<div class="skrow"><span class="sklvl lv${t.level}" onclick="gotoDate('${nextOccurrence(t)}')">≠</span><span class="skt" onclick="gotoDate('${nextOccurrence(t)}')">${escAttr(t.text||"(unnamed)")}</span><span class="skd">${fmtDM(t.skipStart)}→${fmtDM(t.skipEnd)}</span><button class="rst" onclick="unskip('${t.id}')" title="un-skip">↺</button><button class="xdel" onclick="delSkipped('${t.id}')">✕</button></div>`).join(""):'<div class="empty">none in the last 7 days</div>'}`);
 }
@@ -735,9 +735,9 @@ function render(){
   if(!any&&!FROZEN)list.innerHTML='<div class="empty">nothing for '+fmtDM(tabDate)+' — hit ＋ task</div>';
   else if(!any)list.appendChild(Object.assign(document.createElement("div"),{className:"empty",textContent:"no tasks on "+fmtDM(tabDate)}));
   const up=upcomingOccurrences().length;
-  const wk7=ymd(new Date(Date.now()-7*86400000));
-  const skips=tasks.filter(t=>mine(t)&&t.skipped==="1"&&(t.skipEnd||"")>=wk7).length;
-  document.getElementById("btnNext").textContent="next ▸ "+up;
+  const wk30=ymd(new Date(Date.now()-30*86400000));
+  const skips=tasks.filter(t=>mine(t)&&t.skipped==="1"&&(t.skipEnd||"")>=wk30).length;
+  document.getElementById("btnNext").textContent="»» "+up;
   const sb=document.getElementById("btnSkip");if(sb)sb.textContent="≠ "+skips;
   document.getElementById("count").textContent=(weekOffset?fmtDM(tabDate)+" · ":"")+any+" shown";
 }
@@ -946,8 +946,8 @@ document.getElementById("btnNext").onclick=()=>{
     <span class="np-l lv${o.t.level}">L${o.t.level}</span>
     <span class="h">${escAttr(o.t.text||"task")}${repeatSpec(o.t)?` <span class="mut">·${repeatSpec(o.t)}</span>`:''}</span>
     <div class="when mut" style="font-size:11px">${fmtDayMon(o.d)} · ${DAYLABEL[weekdayIdxOf(o.d)]}${o.t.hour?' · '+o.t.hour:''}${o.t.dur?' · '+o.t.dur+'m':''}</div></div>`).join("");
-  openModal(`<h3>next 7 days <span class="x"><button onclick="closeModal()">✕</button></span></h3>
-    ${items.length?rows:'<div class="empty">nothing in the next 7 days</div>'}
+  openModal(`<h3>»» next 30 days <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    ${items.length?rows:'<div class="empty">nothing in the next 30 days</div>'}
     <div class="hint">Every upcoming occurrence across all levels. Tap one to jump to its day.</div>`);
 };
 
