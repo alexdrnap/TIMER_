@@ -314,7 +314,7 @@ async function loadAll(){
     const tv=parseInt(g("tickVol"));if(!isNaN(tv))settings.tickVol=Math.max(0,Math.min(3,tv));
     settings.lastRoll_experiment=g("lastRoll_experiment")||"";
     settings.lastRoll_discipline=g("lastRoll_discipline")||"";}
-  rollover();
+  rollover();catchUp();
   syncTickUI();render();
 }
 async function saveSettings(){if(timerDir)await writeFile(timerDir,SETTINGS_CSV,toCSV(["key","value"],[
@@ -509,6 +509,19 @@ function rollover(){                          // new day: unchecked tasks get CO
   }
   settings[key]=today;saveSettings();if(evCh)saveEvents();if(tCh)saveTasks();
 }
+function nextDay(iso){const d=new Date(iso+"T00:00");d.setDate(d.getDate()+1);return ymd(d);}
+function catchUp(){    // any past-dated, undone task chains forward to today: a miss on each passed day + a carried copy (with the ! marker)
+  const today=todayStr(),cur=settings.mode;let evCh=false,tCh=false,guard=0,changed=true;
+  while(changed&&guard++<400){changed=false;
+    tasks.filter(t=>t.mode===cur&&t.level!=="1"&&t.date&&t.date<today).forEach(t=>{
+      if(eventFor(t.id,t.date))return;                        // done on that day -> stop the chain
+      if(!missFor(t.id,t.date)){events.push(missEvent(t,t.date));evCh=true;}
+      const org=t.origin||t.id,nd=nextDay(t.date);
+      if(!tasks.some(x=>x.origin===org&&x.date===nd)){copyForward(t,nd,org);tCh=true;changed=true;}
+    });
+  }
+  if(evCh)saveEvents();if(tCh)saveTasks();
+}
 
 /* ---------- undo / redo (structural: add / delete / reset) ---------- */
 let undoStack=[],redoStack=[];
@@ -537,7 +550,7 @@ function resetTask(id){const t=byId(id);if(!t)return;snapshot();
 const MON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
 function fmtDayMon(iso){const p=(iso||"").split("-");return p.length===3?(+p[2])+" "+MON[(+p[1])-1]:iso;}   // "19 jul"
 function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;saveTasks();
-  if(field==="date"||field==="dur"||field==="hour")render();}
+  if(field==="date"){catchUp();render();} else if(field==="dur"||field==="hour")render();}
 function deleteTask(id){const t=byId(id);if(!t)return;
   if(t.level==="1"&&!confirm("Delete a level-1 daily anchor? Its history stays in events/notes."))return;
   snapshot();
@@ -808,7 +821,7 @@ function openStats(){
     <div class="hint">Discipline = the % of your tasks you check off, per level (all tasks count — timer and stopwatch alike). Each level's score blends into the total with a fixed weight — L1 50%, L2 30%, L3 20% — renormalized across the levels you actually have tasks in. Unchecked tasks copy to the next day; the miss stays on the day it was due. Experiment & discipline keep <b>separate</b> tasks and data.</div>`);
 }
 document.getElementById("btnStats").onclick=openStats;
-window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";weekOffset=0;saveSettings();rollover();openStats();render();};
+window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";weekOffset=0;saveSettings();rollover();catchUp();openStats();render();};
 window.clearStats=function(){
   if(settings.mode==="discipline"){toast("switch to experiment to clear");return;}
   if(!confirm("Delete ALL experiment stats data? Tasks and notes stay. This can't be undone."))return;
