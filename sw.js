@@ -1,5 +1,5 @@
 /* TIMER_ service worker — offline app shell (your task data lives in your chosen folder, not here) */
-const CACHE = "timer_-v17";
+const CACHE = "timer_-v18";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

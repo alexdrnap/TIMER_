@@ -96,7 +96,7 @@
   .pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0}
   .dtpick{width:58px} .hrpick{width:48px}
   .carry{flex:0 0 auto;width:15px;height:15px;border-radius:50%;background:var(--danger);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
-  .spec{flex:0 0 auto;font-size:9px;color:var(--l3);background:#12202b;border:1px solid var(--line);border-radius:3px;padding:0 3px;max-width:58px;overflow:hidden;white-space:nowrap;line-height:16px}
+  .spec{flex:0 0 auto;font-size:8px;letter-spacing:-.2px;color:var(--l3);background:#12202b;border:1px solid var(--line);border-radius:3px;padding:0 2px;max-width:82px;overflow:hidden;white-space:nowrap;line-height:15px}
   .wdpick{display:flex;gap:4px;margin:8px 0;flex-wrap:wrap}
   .wdpick .wd{flex:1;min-width:34px;padding:8px 0;color:var(--dim)}
   .wdpick .wd.on{background:var(--l3);color:var(--bg);border-color:var(--l3)}
@@ -243,13 +243,13 @@
 const DAYLABEL=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const ONTIME_TOL=5;
 const L1_TARGET=5;                       // level-1 days/week goal
-const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv", SETTINGS_CSV="settings.csv";
+const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv", SETTINGS_CSV="settings.csv", GCAL_CSV="google_L2_import.csv";
 const SOUND_FILE="timer_sound.wav", BOM="\uFEFF";
 
 /* ---------- state ---------- */
 let dbDir=null,timerDir=null;
 let tasks=[],events=[],notes=[];
-let settings={mode:"experiment",tickOn:false,tickVol:1,lastRoll_experiment:"",lastRoll_discipline:""};
+let settings={mode:"experiment",tickOn:false,tickVol:1,lastRoll_experiment:"",lastRoll_discipline:"",gcalClient:""};
 let currentDay=jsDayToIdx(new Date().getDay());
 let deleteMode=false, levelMode=false, moveMode=false, weekOffset=0;
 const collapsed=new Set();               // task/branch ids whose children are hidden
@@ -354,22 +354,24 @@ async function loadAll(){
     settings.tickOn=g("tickOn")==="1";
     const tv=parseInt(g("tickVol"));if(!isNaN(tv))settings.tickVol=Math.max(0,Math.min(3,tv));
     settings.lastRoll_experiment=g("lastRoll_experiment")||"";
-    settings.lastRoll_discipline=g("lastRoll_discipline")||"";}
+    settings.lastRoll_discipline=g("lastRoll_discipline")||"";
+    settings.gcalClient=g("gcalClient")||"";}
   rollover();catchUp();accrueRecurring();
   syncTickUI();render();
 }
 async function saveSettings(){if(timerDir)await writeFile(timerDir,SETTINGS_CSV,toCSV(["key","value"],[
   {key:"mode",value:settings.mode},{key:"tickOn",value:settings.tickOn?"1":"0"},{key:"tickVol",value:String(settings.tickVol)},
-  {key:"lastRoll_experiment",value:settings.lastRoll_experiment||""},{key:"lastRoll_discipline",value:settings.lastRoll_discipline||""}]));}
+  {key:"lastRoll_experiment",value:settings.lastRoll_experiment||""},{key:"lastRoll_discipline",value:settings.lastRoll_discipline||""},
+  {key:"gcalClient",value:settings.gcalClient||""}]));}
 function mutable(ms){return isFinite(ms) && (Date.now()-ms)<DAY_MS;}      // editable within 24h, then permanent
 function eventMutable(e){return e&&mutable(Date.parse(e.created||""));}
 function noteMutable(n){return n&&mutable(Date.parse((n.date||"")+"T"+(n.time||"00:00:00")));}
 function normTask(o){return{id:o.id||uid(),parent:o.parent||"",level:(o.level==="1"||o.level==="2"||o.level==="3")?o.level:(o.parent?"":"3"),
   text:o.text||"",date:o.date||"",hour:o.hour||"",dur:o.dur||"",done:o.done==="1"?"1":"0",acc:o.acc||"0",
   mode:(o.mode==="discipline")?"discipline":"experiment",origin:o.origin||"",
-  repeat:o.repeat||"",skipped:o.skipped==="1"?"1":"0",skipStart:o.skipStart||"",skipEnd:o.skipEnd||"",
+  repeat:o.repeat||"",skipped:o.skipped==="1"?"1":"0",skipStart:o.skipStart||"",skipEnd:o.skipEnd||"",gcal:o.gcal||"",
   sort:o.sort||"0",created:o.created||new Date().toISOString()};}
-const TASK_H=["id","parent","level","text","date","hour","dur","done","acc","mode","origin","repeat","skipped","skipStart","skipEnd","sort","created"];
+const TASK_H=["id","parent","level","text","date","hour","dur","done","acc","mode","origin","repeat","skipped","skipStart","skipEnd","gcal","sort","created"];
 const EVT_H =["id","task_id","level","date","kind","mode","timer","played_at","elapsed_sec","created"];
 const NOTE_H=["id","task_id","task_text","level","date","time","note","audio"];
 async function saveTasks(){if(timerDir)await writeFile(timerDir,TASKS_CSV,toCSV(TASK_H,tasks));}
@@ -960,21 +962,33 @@ function openStats(){
     <div class="stat"><span>level 3 · quick <span class="mut">20%</span></span><b>${show(s3)}</b></div>
     <div class="stat"><span>skips in window</span><b>${skTot}${skTot?` <span class="mut">(−5% each/day)</span>`:''}</b></div>
 
-    ${!disc?`<div class="mbtns" style="margin-top:12px"><button class="del" onclick="clearStats()">reset experiment</button></div>`:''}
+    <div class="mbtns" style="margin-top:12px;flex-wrap:wrap">
+      ${disc?`<button class="prime" onclick="migrateToDiscipline()">migrate from experiment</button>`:''}
+      <button class="del" onclick="clearStats()">reset ${settings.mode}</button>
+    </div>
     <div class="hint">Each <b>day</b> gets a total: the level scores (% of that level's tasks checked that day) blended L1·50 L2·30 L3·20 — renormalized across levels that had tasks — minus 5% per skip that day. A multi-day window is the <b>average of those daily totals</b>. Experiment & discipline keep <b>separate</b> tasks and data.</div>`);
 }
 document.getElementById("btnStats").onclick=openStats;
 window.setWin=function(w){statWin=w;openStats();};
+window.migrateToDiscipline=function(){
+  const src=tasks.filter(t=>t.mode==="experiment");
+  if(!src.length){toast("no experiment tasks");return;}
+  if(!confirm("Copy all "+src.length+" experiment task(s) into discipline mode? Statistics are NOT copied — discipline tracking starts today."))return;
+  src.forEach(t=>{tasks.push(normTask({id:uid(),level:t.level,text:t.text,date:t.date,hour:t.hour,dur:t.dur,
+    mode:"discipline",repeat:t.repeat,sort:t.sort,gcal:t.gcal}));});
+  settings.lastRoll_discipline=todayStr();                    // discipline stats begin on migration day (no back-misses)
+  saveTasks();saveSettings();closeModal();render();toast("migrated "+src.length+" to discipline");
+};
 window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";weekOffset=0;saveSettings();rollover();catchUp();accrueRecurring();openStats();render();};
 window.clearStats=function(){
-  if(settings.mode==="discipline"){toast("switch to experiment to clear");return;}
-  if(!confirm("Reset ALL experiment data — every task, completion and note? This is a full wipe and can't be undone."))return;
-  const ids=new Set(tasks.filter(t=>t.mode==="experiment").map(t=>t.id));
-  tasks=tasks.filter(t=>t.mode!=="experiment");
-  events=events.filter(e=>e.mode!=="experiment");
+  const cur=settings.mode;
+  if(!confirm("Reset ALL "+cur+" data — every task, completion and note in this mode? This is a full wipe and can't be undone."))return;
+  const ids=new Set(tasks.filter(t=>t.mode===cur).map(t=>t.id));
+  tasks=tasks.filter(t=>t.mode!==cur);
+  events=events.filter(e=>e.mode!==cur);
   notes=notes.filter(n=>!ids.has(n.task_id));
-  settings.lastRoll_experiment="";
-  saveTasks();saveEvents();saveNotes();saveSettings();closeModal();render();toast("experiment reset");
+  settings["lastRoll_"+cur]="";
+  saveTasks();saveEvents();saveNotes();saveSettings();closeModal();render();toast(cur+" reset");
 };
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
 
@@ -998,10 +1012,67 @@ function openMore(){openModal(`<h3>data & sound <span class="x"><button onclick=
     <button onclick="importSound()">♪ import timer sound (.wav)</button>
     <button onclick="exportData()">⭳ export / back up data (CSV)</button>
     <button onclick="importData()">⭱ restore data from CSV files</button>
+    <button onclick="importGCal()">📅 import_level_2_from_Google_calendar</button>
   </div>
   <div class="hint">${HAS_FSA
     ? "On this computer your data lives in the TIMER folder inside the database folder you connect."
     : "On phone the app stores data <b>privately on-device</b> (not a visible folder). Import your timer sound here, and use export now and then to back it up (downloads to your Downloads folder). Restore moves data from another device."}</div>`);}
+
+/* ---------- Google Calendar import (recurring monthly/yearly -> experiment level-2) ---------- */
+let gapiToken=null;
+function loadGIS(){return new Promise((res,rej)=>{
+  if(window.google&&google.accounts&&google.accounts.oauth2)return res();
+  const s=document.createElement("script");s.src="https://accounts.google.com/gsi/client";s.onload=()=>res();s.onerror=()=>rej(new Error("GIS load failed (no network?)"));document.head.appendChild(s);});}
+window.importGCal=async function(){
+  if(!settings.gcalClient){
+    openModal(`<h3>Google Calendar — one-time setup <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+      <div class="hint">To let this app read your calendar, paste a Google <b>OAuth Client ID</b>. Create one (free) at console.cloud.google.com → APIs &amp; Services → Credentials → OAuth client ID → <b>Web application</b>, and add <b>https://alexdrnap.github.io</b> to "Authorized JavaScript origins". Enable the "Google Calendar API" for the project. Then paste the Client ID here.</div>
+      <input id="gci" placeholder="xxxx.apps.googleusercontent.com" style="width:100%;margin-top:8px">
+      <div class="mbtns"><button class="prime" onclick="saveGClient()">save &amp; continue</button></div>`);
+    return;
+  }
+  toast("opening Google sign-in…");
+  try{
+    await loadGIS();
+    const tc=google.accounts.oauth2.initTokenClient({
+      client_id:settings.gcalClient,
+      scope:"https://www.googleapis.com/auth/calendar.readonly",
+      callback:async(resp)=>{ if(resp&&resp.access_token){gapiToken=resp.access_token;await fetchGCal();} else toast("no access granted"); }
+    });
+    tc.requestAccessToken();
+  }catch(e){toast(e.message||"Google sign-in failed");}
+};
+window.saveGClient=function(){const v=(document.getElementById("gci").value||"").trim();if(!v){toast("paste a Client ID");return;}
+  settings.gcalClient=v;saveSettings();closeModal();importGCal();};
+async function fetchGCal(){
+  try{
+    const now=new Date(),tMin=new Date(now.getFullYear()-1,0,1).toISOString();
+    const url="https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=false&maxResults=2500&timeMin="+encodeURIComponent(tMin);
+    const r=await fetch(url,{headers:{Authorization:"Bearer "+gapiToken}});
+    if(!r.ok)throw new Error("calendar fetch "+r.status);
+    const data=await r.json();
+    const items=(data.items||[]).filter(it=>Array.isArray(it.recurrence)&&it.recurrence.some(x=>/FREQ=(MONTHLY|YEARLY)/i.test(x)));
+    // map to level-2 task rows
+    const mapped=items.map(it=>{
+      const rr=it.recurrence.find(x=>/FREQ=(MONTHLY|YEARLY)/i.test(x))||"";
+      const freq=/FREQ=YEARLY/i.test(rr)?"y":"m";
+      const start=(it.start&&(it.start.date||it.start.dateTime))||"";
+      const date=start.slice(0,10);
+      const hour=(it.start&&it.start.dateTime)?new Date(it.start.dateTime).toTimeString().slice(0,5):"";
+      return {gcal:it.id,text:(it.summary||"(untitled)"),date,hour,repeat:freq};
+    }).filter(m=>m.date);
+    // dedupe against already-imported (keep user edits, add only new gcal ids)
+    const have=new Set(tasks.filter(t=>t.mode==="experiment"&&t.gcal).map(t=>t.gcal));
+    const fresh=mapped.filter(m=>!have.has(m.gcal));
+    if(have.size>0 && !confirm("You've imported before. Your edited tasks are kept — this only adds "+fresh.length+" new event(s). Continue?"))return;
+    fresh.forEach(m=>tasks.push(normTask({id:uid(),level:"2",text:m.text,date:m.date,hour:m.hour,repeat:m.repeat,mode:"experiment",gcal:m.gcal,sort:String(tasks.length)})));
+    // write the source-of-truth import csv (all currently-imported experiment L2 from google)
+    const grows=tasks.filter(t=>t.mode==="experiment"&&t.gcal);
+    if(timerDir)await writeFile(timerDir,GCAL_CSV,toCSV(TASK_H,grows));
+    saveTasks();closeModal();render();
+    toast(fresh.length?("imported "+fresh.length+" new · "+(mapped.length-fresh.length)+" kept"):("no new events · "+mapped.length+" already imported"));
+  }catch(e){toast(e.message||"import failed");}
+}
 
 /* ---------- per-second tick (metronome, independent volume) ---------- */
 let tickCtx=null,tickIv=null;
@@ -1014,7 +1085,7 @@ function tickActive(){for(const st of timers.values()){if(st.paused)continue;
   if(st.dur>0){if(elapsedOf(st)<st.dur)return true;}else return true;}return false;}   // timer: only until it ends; stopwatch: while running
 function tickPulse(){
   if(!settings.tickOn||!tickCtx||!tickActive())return;
-  const vol=[0.05,0.14,0.34,0.7][settings.tickVol]||0.14;
+  const vol=[0.025,0.12,0.24,0.34][settings.tickVol]||0.12;
   const o=tickCtx.createOscillator(),g=tickCtx.createGain();o.type="triangle";o.frequency.value=1600;
   o.connect(g);g.connect(tickCtx.destination);const t=tickCtx.currentTime;
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.002);g.gain.exponentialRampToValueAtTime(0.0001,t+0.03);
