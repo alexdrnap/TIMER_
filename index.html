@@ -89,9 +89,13 @@
   .elapsed.sw{color:var(--dim);opacity:.85}
   .elapsed.paused{opacity:.5}
   .hr{flex:0 0 auto;width:84px;padding:1px 2px}
-  .dur{flex:0 0 auto;width:36px;text-align:center;padding:1px 2px}
-  .dt{flex:0 0 auto;width:120px;padding:1px 2px}
-  .hr,.dur,.dt{background-color:#0d0f13;background-image:repeating-linear-gradient(45deg,rgba(150,156,170,.13) 0 1px,transparent 1px 5px)}
+  .dur{flex:0 0 auto;width:36px;text-align:center;padding:1px 2px;background-color:#0d0f13;background-image:repeating-linear-gradient(45deg,rgba(150,156,170,.13) 0 1px,transparent 1px 5px)}
+  .pick{position:relative;flex:0 0 auto;display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:4px;overflow:hidden;
+    background-color:#0d0f13;background-image:repeating-linear-gradient(45deg,rgba(150,156,170,.13) 0 1px,transparent 1px 5px)}
+  .pick .lbl{padding:1px 4px;font-size:12px;color:var(--ink);white-space:nowrap;pointer-events:none;text-align:center;width:100%}
+  .pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0}
+  .dtpick{width:58px} .hrpick{width:48px}
+  .carry{flex:0 0 auto;width:15px;height:15px;border-radius:50%;background:var(--danger);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
   .note{flex:0 0 auto;width:24px;height:22px;padding:0;color:var(--dim);font-size:12px}
   .note.has{color:var(--l1);border-color:#4a3a1c}
   .brc{flex:0 0 auto;width:26px;height:22px;padding:0;color:var(--dim);font-size:11px}
@@ -530,8 +534,10 @@ function setLevel(id,lvl){
 function resetTask(id){const t=byId(id);if(!t)return;snapshot();
   [...timers.keys()].filter(k=>k.split("|")[0]===id).forEach(k=>{const st=timers.get(k);if(st&&st.iv)clearInterval(st.iv);timers.delete(k);stopAudio(k);});
   t.dur="";t.hour="";t.acc="0";saveTasks();render();}          // keeps the text field
+const MON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+function fmtDayMon(iso){const p=(iso||"").split("-");return p.length===3?(+p[2])+" "+MON[(+p[1])-1]:iso;}   // "19 jul"
 function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;saveTasks();
-  if(field==="date"||field==="dur")render();}
+  if(field==="date"||field==="dur"||field==="hour")render();}
 function deleteTask(id){const t=byId(id);if(!t)return;
   if(t.level==="1"&&!confirm("Delete a level-1 daily anchor? Its history stays in events/notes."))return;
   snapshot();
@@ -609,11 +615,12 @@ function renderTask(t,occDate){
   const el=document.createElement("div");el.className=cls.join(" ");el.dataset.tid=t.id;
   el.innerHTML=`<div class="row">
     ${simple?'':`<input class="ck" type="checkbox" data-act="done" data-id="${t.id}" data-date="${occDate}" ${isDone?"checked":""} ${chkLock?"disabled":""} title="${chkLock?'locked':'done'}">`}
+    ${(!simple&&t.origin&&!isDone)?'<span class="carry" title="carried over from a missed day">!</span>':''}
     <span class="txt"><input data-act="text" data-id="${t.id}" value="${escAttr(t.text)}" placeholder="task…" ${FROZEN?"disabled":""}></span>
     ${simple?'':(running?`<span class="elapsed${paused?' paused':''}${ended?' alarm':''}" data-run="${key}">${fmtElapsed(st)}</span>`
       :(isSW&&(+t.acc>0)?`<span class="elapsed sw" title="stored time">${mmss(+t.acc)}</span>`:''))}
-    ${(!simple&&showDate)?`<input class="dt" type="date" data-act="date" data-id="${t.id}" value="${escAttr(t.date)}" ${FROZEN?"disabled":""}>`:''}
-    ${(!simple&&showHour)?`<input class="hr" type="time" data-act="hour" data-id="${t.id}" value="${escAttr(t.hour)}" ${FROZEN?"disabled":""}>`:''}
+    ${(!simple&&showDate)?`<label class="pick dtpick"><span class="lbl">${t.date?fmtDayMon(t.date):'date'}</span><input type="date" data-act="date" data-id="${t.id}" value="${escAttr(t.date)}" ${FROZEN?"disabled":""}></label>`:''}
+    ${(!simple&&showHour)?`<label class="pick hrpick"><span class="lbl">${t.hour||'--:--'}</span><input type="time" data-act="hour" data-id="${t.id}" value="${escAttr(t.hour)}" ${FROZEN?"disabled":""}></label>`:''}
     ${simple?'':`<input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="decimal" ${FROZEN?"disabled":""}>`}
     ${editCluster(t.id)}
     ${simple?'':(ended?`<button class="play" disabled title="time's up — check done">⏹</button>`
