@@ -125,7 +125,8 @@
   .task.frozen input,.task.frozen button,.branch.frozen input,.branch.frozen button{pointer-events:none}
   .frozenbar{background:#241a10;border:1px solid #4a3a1c;color:var(--l1);border-radius:6px;padding:3px 8px;font-size:11px;margin:2px 0}
   #btnMove.on{background:#12202b;color:var(--l2);outline:1px solid var(--l2)}
-  #btnPrevWk,#btnNextWk{width:24px;padding:0;color:var(--dim)}
+  #btnPrevWk,#btnNextWk,#btnHome{width:24px;padding:0;color:var(--dim)}
+  .np{cursor:pointer} .skrow .skt,.skrow .sklvl{cursor:pointer}
   .tag{font-size:10px;border-radius:4px;padding:0 4px}
   .tag.over{color:#ff9b96;border:1px solid #5a2f2c}
   .empty{color:var(--faint);text-align:center;padding:24px 10px;font-size:12px}
@@ -222,6 +223,7 @@
 
 <div class="subbar">
   <button id="btnPrevWk" title="previous week">‹</button>
+  <button id="btnHome" title="back to today">⌂</button>
   <button id="btnNextWk" title="next week">›</button>
   <button class="next" id="btnNext">next ▸ future</button>
   <button class="next" id="btnSkip" title="skipped tasks">≠ 0</button>
@@ -566,26 +568,32 @@ function catchUp(){    // any past-dated, undone ONCE task chains forward to tod
   }
   if(evCh)saveEvents();if(tCh)saveTasks();
 }
-function accrueRecurring(){   // recurring L2/L3: record a miss on each passed unchecked occurrence; skip the task if abandoned a full cycle
+function accrueRecurring(){   // recurring L2/L3: miss on passed unchecked occurrences (from import day on); skip only if a full cycle passes AFTER import
   const today=todayStr(),cur=settings.mode;let evCh=false,tCh=false;const WINDOW=120;
   const cap=ymd(new Date(Date.now()-WINDOW*86400000));
-  tasks.filter(t=>t.mode===cur&&t.repeat&&(t.level==="2"||t.level==="3")&&t.skipped!=="1").forEach(t=>{
-    const start=(t.date||t.created.slice(0,10));
+  tasks.filter(t=>t.mode===cur&&t.repeat&&(t.level==="2"||t.level==="3")).forEach(t=>{
+    const anchor=t.date||"", created=(t.created||"").slice(0,10)||today;
+    const base=(anchor&&anchor>created)?anchor:created;              // never count occurrences before the task existed here (imported = created today)
     const dones=events.filter(e=>e.task_id===t.id&&e.kind==="done"&&e.mode===cur).map(e=>e.date).sort();
     const lastDone=dones.length?dones[dones.length-1]:null;
-    let from=start<cap?cap:start,d=new Date(from+"T00:00");
+    const ref=lastDone||base;
+    const cycleEnd = t.level==="3" ? ymd(new Date(new Date(ref+"T00:00").getTime()+7*86400000))
+                    : (t.repeat==="m" ? addMonths(ref,1) : addYears(ref,1));
+    const shouldSkip = today>=cycleEnd;
+    if(shouldSkip && t.skipped!=="1"){                               // abandoned a full cycle -> skip
+      t.skipped="1";t.skipStart=base;t.skipEnd=today;tCh=true;
+      events.push({id:uid(),task_id:t.id,level:t.level,date:today,kind:"skip",mode:cur,timer:"0",played_at:"",elapsed_sec:"0",created:new Date().toISOString()});evCh=true;
+    }else if(!shouldSkip && t.skipped==="1"){                        // heal wrongly-skipped (e.g. imported recurring)
+      t.skipped="0";t.skipStart="";t.skipEnd="";tCh=true;
+      events=events.filter(e=>!(e.task_id===t.id&&e.kind==="skip"&&e.mode===cur));evCh=true;
+    }
+    if(t.skipped==="1")return;
+    let from=base<cap?cap:base,d=new Date(from+"T00:00");            // misses only from the baseline forward
     while(true){const ds=ymd(d);if(ds>=today)break;
-      if(ds>=start&&occursOn(t,ds,weekdayIdxOf(ds))){
+      if(ds>=base&&occursOn(t,ds,weekdayIdxOf(ds))){
         if(!events.some(e=>e.task_id===t.id&&e.date===ds&&e.mode===cur&&(e.kind==="done"||e.kind==="miss"))){events.push(missEvent(t,ds));evCh=true;}
       }
       d.setDate(d.getDate()+1);
-    }
-    const ref=lastDone||start;
-    const cycleEnd = t.level==="3" ? ymd(new Date(new Date(ref+"T00:00").getTime()+7*86400000))
-                    : (t.repeat==="m" ? addMonths(ref,1) : addYears(ref,1));
-    if(today>=cycleEnd){                                          // abandoned a full cycle -> skip
-      t.skipped="1";t.skipStart=start;t.skipEnd=today;tCh=true;
-      events.push({id:uid(),task_id:t.id,level:t.level,date:today,kind:"skip",mode:cur,timer:"0",played_at:"",elapsed_sec:"0",created:new Date().toISOString()});evCh=true;
     }
   });
   if(evCh)saveEvents();if(tCh)saveTasks();
@@ -638,12 +646,24 @@ window.saveRepeat=function(id){const t=byId(id);if(!t)return;
   saveTasks();closeModal();render();
 };
 window.clearRepeat=function(id){const t=byId(id);if(!t)return;t.repeat="";t.skipped="0";saveTasks();closeModal();render();};
+function nextOccurrence(t){const today=todayStr();let d=new Date(today+"T00:00");
+  for(let i=0;i<400;i++){const ds=ymd(d);if(ds>=(t.date||"")&&occursOnRaw(t,ds,weekdayIdxOf(ds)))return ds;d.setDate(d.getDate()+1);}return t.date||today;}
+function occursOnRaw(t,dateStr,wdIdx){const s=t.skipped;t.skipped="0";const r=occursOn(t,dateStr,wdIdx);t.skipped=s;return r;}  // ignore skipped flag (for finding where it WOULD land)
+function gotoDate(iso){if(!iso)return;
+  const tgt=new Date(iso+"T00:00");
+  const thisMon=new Date();thisMon.setHours(0,0,0,0);thisMon.setDate(thisMon.getDate()-jsDayToIdx(thisMon.getDay()));
+  const tgtMon=new Date(tgt);tgtMon.setDate(tgt.getDate()-jsDayToIdx(tgt.getDay()));
+  weekOffset=Math.round((tgtMon-thisMon)/(7*86400000));currentDay=jsDayToIdx(tgt.getDay());
+  closeModal();render();}
+window.gotoDate=gotoDate;
 function openSkipped(){
   const cur=settings.mode;const list=tasks.filter(t=>t.mode===cur&&t.skipped==="1").sort((a,b)=>(b.skipEnd||"").localeCompare(a.skipEnd||""));
   openModal(`<h3>skipped (${list.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
-    <div class="hint">Recurring tasks abandoned for a full cycle. Each one takes 5% off its level's discipline.</div>
-    ${list.length?list.map(t=>`<div class="skrow"><span class="sklvl lv${t.level}">≠</span><span class="skt">${escAttr(t.text||"(unnamed)")}</span><span class="skd">${fmtDM(t.skipStart)}→${fmtDM(t.skipEnd)}</span><button class="xdel" onclick="delSkipped('${t.id}')">✕</button></div>`).join(""):'<div class="empty">none</div>'}`);
+    <div class="hint">Recurring tasks abandoned for a full cycle. Each takes 5% off its level's discipline. Tap one to jump to its next occurrence; ↺ un-skips it.</div>
+    ${list.length?list.map(t=>`<div class="skrow"><span class="sklvl lv${t.level}" onclick="gotoDate('${nextOccurrence(t)}')">≠</span><span class="skt" onclick="gotoDate('${nextOccurrence(t)}')">${escAttr(t.text||"(unnamed)")}</span><span class="skd">${fmtDM(t.skipStart)}→${fmtDM(t.skipEnd)}</span><button class="rst" onclick="unskip('${t.id}')" title="un-skip">↺</button><button class="xdel" onclick="delSkipped('${t.id}')">✕</button></div>`).join(""):'<div class="empty">none</div>'}`);
 }
+window.unskip=function(id){const t=byId(id);if(!t)return;t.skipped="0";t.skipStart="";t.skipEnd="";
+  events=events.filter(e=>!(e.task_id===id&&e.kind==="skip"&&e.mode===settings.mode));saveTasks();saveEvents();openSkipped();render();};
 window.delSkipped=function(id){snapshot();tasks=tasks.filter(x=>x.id!==id);saveTasks();openSkipped();render();};
 function resetTask(id){const t=byId(id);if(!t)return;snapshot();
   [...timers.keys()].filter(k=>k.split("|")[0]===id).forEach(k=>{const st=timers.get(k);if(st&&st.iv)clearInterval(st.iv);timers.delete(k);stopAudio(k);});
@@ -907,15 +927,21 @@ function openLog(){
 }
 document.getElementById("btnLog").onclick=openLog;
 
-/* next = future scheduled (level 2, date>today) */
+/* next = upcoming scheduled level-2 (once tasks dated ahead + each recurring task's next occurrence) */
 document.getElementById("btnNext").onclick=()=>{
-  const today=todayStr();
-  const fut=tasks.filter(t=>t.level==="2"&&t.date>today).sort((a,b)=>(a.date+a.hour)<(b.date+b.hour)?-1:1);
-  const rows=fut.map(t=>`<div class="np"><span class="h">${escAttr(t.text||"task")}</span>
-    <div class="when mut" style="font-size:11px">${fmtD(t.date)} · ${t.hour} · ${DAYLABEL[weekdayIdxOf(t.date)]}${t.dur?' · '+t.dur+'m':''}</div></div>`).join("");
-  openModal(`<h3>next — future scheduled <span class="x"><button onclick="closeModal()">✕</button></span></h3>
-    ${fut.length?rows:'<div class="empty">no future level-2 tasks</div>'}
-    <div class="hint">Level-2 tasks dated after today are parked here until their day. Level-1 is daily; level-3 is today-only.</div>`);
+  const today=todayStr(),cur=settings.mode;
+  const items=[];
+  tasks.filter(t=>t.mode===cur&&t.level==="2"&&t.skipped!=="1").forEach(t=>{
+    if(!t.repeat){ if(t.date>today)items.push({t,d:t.date,r:""}); }
+    else { const d=nextOccurrence(t); if(d)items.push({t,d,r:t.repeat}); }        // next monthly/yearly hit
+  });
+  items.sort((a,b)=>(a.d+(a.t.hour||""))<(b.d+(b.t.hour||""))?-1:1);
+  const rows=items.map(o=>`<div class="np" onclick="gotoDate('${o.d}')">
+    <span class="h">${escAttr(o.t.text||"task")}${o.r?` <span class="mut">·${o.r==="m"?"monthly":"yearly"}</span>`:''}</span>
+    <div class="when mut" style="font-size:11px">${fmtD(o.d)} · ${o.t.hour||"--:--"} · ${DAYLABEL[weekdayIdxOf(o.d)]}${o.t.dur?' · '+o.t.dur+'m':''}</div></div>`).join("");
+  openModal(`<h3>next — upcoming scheduled <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    ${items.length?rows:'<div class="empty">nothing upcoming</div>'}
+    <div class="hint">Tap one to jump to its day. Future one-time L2 tasks and the next date of every recurring L2 are listed here.</div>`);
 };
 
 /* ---------- mode_switch (discipline stats, per-mode dataset) ---------- */
@@ -1105,6 +1131,7 @@ document.getElementById("btnDel").onclick=()=>{deleteMode=!deleteMode;if(deleteM
 document.getElementById("btnLvl").onclick=()=>{levelMode=!levelMode;if(levelMode){deleteMode=false;moveMode=false;}render();};
 document.getElementById("btnMove").onclick=()=>{moveMode=!moveMode;if(moveMode){deleteMode=false;levelMode=false;}render();};
 document.getElementById("btnPrevWk").onclick=()=>{weekOffset--;render();};
+document.getElementById("btnHome").onclick=()=>{weekOffset=0;currentDay=jsDayToIdx(new Date().getDay());render();};
 document.getElementById("btnSkip").onclick=openSkipped;
 document.getElementById("btnNextWk").onclick=()=>{weekOffset++;render();};
 document.getElementById("btnUndo").onclick=doUndo;
