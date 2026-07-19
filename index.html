@@ -692,6 +692,27 @@ function closeModal(){modal.classList.remove("on");}
 window.closeModal=closeModal;
 modal.addEventListener("click",e=>{if(e.target===modal)closeModal();});
 
+/* ---------- confirm before the hardware back button exits ---------- */
+function openExitModal(){
+  openModal(`<h3>exit TIMER_?</h3>
+    <div class="hint">You'll leave the app.</div>
+    <div class="mbtns"><button onclick="stayInApp()">nope</button><button class="del" onclick="exitApp()">yep</button></div>`);
+}
+window.stayInApp=function(){closeModal();};                 // already re-trapped in popstate
+let leaving=false;
+try{history.pushState({trap:1},"");}catch(e){}
+window.addEventListener("popstate",()=>{
+  if(leaving)return;
+  if(modal.classList.contains("on")){closeModal();history.pushState({trap:1},"");return;}   // back closes an open sheet first
+  history.pushState({trap:1},"");                           // stay trapped
+  openExitModal();
+});
+window.exitApp=function(){
+  leaving=true;closeModal();
+  window.addEventListener("popstate",function h(){window.removeEventListener("popstate",h);history.back();},{once:true});
+  history.back();                                           // pop our trap, then the base entry -> app closes
+};
+
 /* ---------- voice notes (mic → TIMER/audio_logs) ---------- */
 let mr=null,recChunks=[],recBlob=null,recExt="webm",recIv=null,logAudio=null;
 function recMime(){for(const[m,e]of[["audio/webm;codecs=opus","webm"],["audio/webm","webm"],["audio/ogg;codecs=opus","ogg"],["audio/mp4","m4a"]])
