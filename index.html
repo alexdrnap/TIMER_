@@ -65,6 +65,11 @@
     display:flex;align-items:center;gap:6px}
   .grp .dot{width:7px;height:7px;border-radius:2px}
   .grp.l1 .dot{background:var(--l1)} .grp.l2 .dot{background:var(--l2)} .grp.l3 .dot{background:var(--l3)}
+  .grp.sched .dot{background:#7fbfff} .grp.unsched .dot{background:#666}
+  .grp.sched,.grp.unsched{font-size:11px;color:var(--dim)}
+  .grp.sub{margin-left:10px;font-size:9px;opacity:.8}
+  .task{touch-action:pan-y}
+  .task.armdel{box-shadow:inset 3px 0 0 var(--danger)} .task.armlvl{box-shadow:inset 3px 0 0 #4a78c8}
 
   .task{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 4px;margin:1px 0;position:relative;overflow:hidden}
   .task.l1{border-left:3px solid var(--l1)} .task.l2{border-left:3px solid var(--l2)} .task.l3{border-left:3px solid var(--l3)}
@@ -205,9 +210,7 @@
       <button id="btnUndo" title="undo">↶</button>
       <button id="btnRedo" title="redo">↷</button>
     </span>
-    <span class="hgroup" title="edit modes">
-      <button id="btnDel" class="del" title="delete tasks">🗑</button>
-      <button id="btnLvl" title="set task level">①②③</button>
+    <span class="hgroup" title="swipe a task ← to delete, → to set level">
       <button id="btnMove" title="move / reorder tasks">⠿</button>
     </span>
     <span class="hgroup">
@@ -249,15 +252,16 @@
 const DAYLABEL=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const ONTIME_TOL=5;
 const L1_TARGET=5;                       // level-1 days/week goal
-const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv", SETTINGS_CSV="settings.csv", GCAL_CSV="google_L2_import.csv", PRESET_CSV="l1_presets.csv";
+const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv", SETTINGS_CSV="settings.csv", GCAL_CSV="google_L2_import.csv", PRESET_CSV="l1_presets.csv", ARCHIVE_CSV="discipline_archive.csv";
 const SOUND_FILE="timer_sound.wav", BOM="\uFEFF";
 
 /* ---------- state ---------- */
 let dbDir=null,timerDir=null;
-let tasks=[],events=[],notes=[],presets=[];
-let settings={mode:"experiment",tickOn:false,tickVol:1,lastRoll_experiment:"",lastRoll_discipline:"",gcalClient:""};
+let tasks=[],events=[],notes=[],presets=[],archives=[];
+let settings={mode:"experiment",tickOn:false,tickVol:1,lastRoll_experiment:"",lastRoll_discipline:"",gcalClient:"",discStart:""};
 let currentDay=jsDayToIdx(new Date().getDay());
-let deleteMode=false, levelMode=false, moveMode=false, weekOffset=0;
+let moveMode=false, weekOffset=0;
+let armed=null;                          // {id, type:"del"|"lvl"} — the one row currently swipe-armed
 const collapsed=new Set();               // task/branch ids whose children are hidden
 let dragId=null;
 function byOrder(a,b){return (+a.sort)-(+b.sort);}
@@ -355,6 +359,7 @@ async function loadAll(){
   const et=await readFile(timerDir,EVENTS_CSV);events=et?parseCSV(et):[];
   const nt=await readFile(timerDir,NOTES_CSV);notes=nt?parseCSV(nt):[];
   const pt=await readFile(timerDir,PRESET_CSV);presets=pt?parseCSV(pt):[];
+  const at=await readFile(timerDir,ARCHIVE_CSV);archives=at?parseCSV(at):[];
   events.forEach(e=>{if(!e.created)e.created=e.played_at||(e.date?e.date+"T12:00:00":new Date().toISOString());
     if(!e.kind)e.kind="done";if(!e.mode)e.mode="experiment";if(e.timer!=="0"&&e.timer!=="1")e.timer="1";});
   const stx=await readFile(timerDir,SETTINGS_CSV);
@@ -364,14 +369,15 @@ async function loadAll(){
     const tv=parseInt(g("tickVol"));if(!isNaN(tv))settings.tickVol=Math.max(0,Math.min(3,tv));
     settings.lastRoll_experiment=g("lastRoll_experiment")||"";
     settings.lastRoll_discipline=g("lastRoll_discipline")||"";
-    settings.gcalClient=g("gcalClient")||"";}
+    settings.gcalClient=g("gcalClient")||"";
+    settings.discStart=g("discStart")||"";}
   rollover();catchUp();accrueRecurring();
   syncTickUI();render();
 }
 async function saveSettings(){if(timerDir)await writeFile(timerDir,SETTINGS_CSV,toCSV(["key","value"],[
   {key:"mode",value:settings.mode},{key:"tickOn",value:settings.tickOn?"1":"0"},{key:"tickVol",value:String(settings.tickVol)},
   {key:"lastRoll_experiment",value:settings.lastRoll_experiment||""},{key:"lastRoll_discipline",value:settings.lastRoll_discipline||""},
-  {key:"gcalClient",value:settings.gcalClient||""}]));}
+  {key:"gcalClient",value:settings.gcalClient||""},{key:"discStart",value:settings.discStart||""}]));}
 function mutable(ms){return isFinite(ms) && (Date.now()-ms)<DAY_MS;}      // editable within 24h, then permanent
 function eventMutable(e){return e&&mutable(Date.parse(e.created||""));}
 function noteMutable(n){return n&&mutable(Date.parse((n.date||"")+"T"+(n.time||"00:00:00")));}
@@ -384,7 +390,9 @@ const TASK_H=["id","parent","level","text","date","hour","dur","done","acc","mod
 const EVT_H =["id","task_id","level","date","kind","mode","timer","played_at","elapsed_sec","created"];
 const NOTE_H=["id","task_id","task_text","level","date","time","note","audio"];
 const PRESET_H=["preset","text","hour","dur"];
+const ARCHIVE_H=["name","start","end","days","overall","l1","l2","l3","saved"];
 async function savePresets(){if(timerDir)await writeFile(timerDir,PRESET_CSV,toCSV(PRESET_H,presets));}
+async function saveArchives(){if(timerDir)await writeFile(timerDir,ARCHIVE_CSV,toCSV(ARCHIVE_H,archives));}
 async function saveTasks(){if(timerDir)await writeFile(timerDir,TASKS_CSV,toCSV(TASK_H,tasks));}
 async function saveEvents(){if(timerDir)await writeFile(timerDir,EVENTS_CSV,toCSV(EVT_H,events));}
 async function saveNotes(){if(timerDir)await writeFile(timerDir,NOTES_CSV,toCSV(NOTE_H,notes));}
@@ -657,10 +665,10 @@ window.saveRepeat=function(id){const t=byId(id);if(!t)return;
 window.clearRepeat=function(id){const t=byId(id);if(!t)return;t.repeat="";t.skipped="0";saveTasks();closeModal();render();};
 function nextOccurrence(t){const today=todayStr();let d=new Date(today+"T00:00");
   for(let i=0;i<400;i++){const ds=ymd(d);if(ds>=(t.date||"")&&occursOnRaw(t,ds,weekdayIdxOf(ds)))return ds;d.setDate(d.getDate()+1);}return t.date||today;}
-function upcomingOccurrences(){    // ONE row per task — its first occurrence within the next 30 days, chronological
+function upcomingOccurrences(){    // ONE row per task (L2/L3 only — not daily L1), first occurrence within the next 30 days
   const cur=settings.mode,out=[],seen=new Set(),base=new Date(todayStr()+"T00:00");
   for(let i=1;i<=30;i++){const d=new Date(base);d.setDate(d.getDate()+i);const ds=ymd(d),wd=weekdayIdxOf(ds);
-    tasks.filter(t=>t.mode===cur&&t.skipped!=="1"&&!seen.has(t.id)&&occursOn(t,ds,wd)).forEach(t=>{seen.add(t.id);out.push({t,d:ds});});}
+    tasks.filter(t=>t.mode===cur&&t.level!=="1"&&t.skipped!=="1"&&!seen.has(t.id)&&occursOn(t,ds,wd)).forEach(t=>{seen.add(t.id);out.push({t,d:ds});});}
   out.sort((a,b)=>(a.d+(a.t.hour||""))<(b.d+(b.t.hour||""))?-1:1);return out;
 }
 function occursOnRaw(t,dateStr,wdIdx){const s=t.skipped;t.skipped="0";const r=occursOn(t,dateStr,wdIdx);t.skipped=s;return r;}  // ignore skipped flag (for finding where it WOULD land)
@@ -676,7 +684,7 @@ function openSkipped(){
   const list=tasks.filter(t=>t.mode===cur&&t.skipped==="1").sort((a,b)=>(a.skipEnd||"").localeCompare(b.skipEnd||""));
   openModal(`<h3>skipped (${list.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
     <div class="hint">Recurring tasks abandoned for a full cycle. Each takes 5% off its level's discipline. Tap one to jump to its next occurrence; ↺ un-skips it.</div>
-    ${list.length?list.map(t=>`<div class="skrow"><span class="sklvl lv${t.level}" onclick="gotoDate('${nextOccurrence(t)}')">≠</span><span class="skt" onclick="gotoDate('${nextOccurrence(t)}')">${escAttr(t.text||"(unnamed)")}</span><span class="skd">${fmtDM(t.skipStart)}→${fmtDM(t.skipEnd)}</span><button class="rst" onclick="unskip('${t.id}')" title="un-skip">↺</button><button class="xdel" onclick="delSkipped('${t.id}')">✕</button></div>`).join(""):'<div class="empty">none in the last 7 days</div>'}`);
+    ${list.length?list.map(t=>`<div class="skrow"><span class="sklvl lv${t.level}" onclick="gotoDate('${nextOccurrence(t)}')">≠</span><span class="skt" onclick="gotoDate('${nextOccurrence(t)}')">${escAttr(t.text||"(unnamed)")}</span><span class="skd">${fmtDM(t.skipStart)}→${fmtDM(t.skipEnd)}</span><button class="rst" onclick="unskip('${t.id}')" title="un-skip">↺</button><button class="xdel" onclick="delSkipped('${t.id}')">✕</button></div>`).join(""):'<div class="empty">none</div>'}`);
 }
 window.unskip=function(id){const t=byId(id);if(!t)return;t.skipped="0";t.skipStart="";t.skipEnd="";
   events=events.filter(e=>!(e.task_id===id&&e.kind==="skip"&&e.mode===settings.mode));saveTasks();saveEvents();openSkipped();render();};
@@ -723,20 +731,24 @@ function renderTabs(){
 function render(){
   renderTabs();
   const list=document.getElementById("list");list.innerHTML="";
-  document.getElementById("btnDel").classList.toggle("on",deleteMode);
-  document.getElementById("btnLvl").classList.toggle("on",levelMode);
   document.getElementById("btnMove").classList.toggle("on",moveMode);
   const wk=weekDates(weekOffset),tabDate=wk[currentDay],today=todayStr(),cur=settings.mode;
   FROZEN = (tabDate<today && cur==="discipline");           // past days are read-only in discipline mode
   const mine=t=>t.mode===cur;                               // modes are fully separate
-  const l3=tasks.filter(t=>mine(t)&&t.level==="3"&&occursOn(t,tabDate,currentDay)).sort(byOrder);
-  const l2=tasks.filter(t=>mine(t)&&t.level==="2"&&occursOn(t,tabDate,currentDay)).sort(byOrder);
-  const l1=tasks.filter(t=>mine(t)&&t.level==="1").sort(byOrder);   // daily, shown on every day
-  let any=l3.length+l2.length+l1.length;
+  const day=tasks.filter(t=>mine(t)&&occursOn(t,tabDate,currentDay));
+  const sched=day.filter(t=>t.hour).sort((a,b)=>a.hour<b.hour?-1:(a.hour>b.hour?1:byOrder(a,b)));   // by time, any level
+  const un1=day.filter(t=>!t.hour&&t.level==="1").sort(byOrder);
+  const un2=day.filter(t=>!t.hour&&t.level==="2").sort(byOrder);
+  const un3=day.filter(t=>!t.hour&&t.level==="3").sort(byOrder);
+  let any=day.length;
   if(FROZEN){const f=document.createElement("div");f.className="frozenbar";f.textContent="🔒 past day (discipline) — read-only";list.appendChild(f);}
-  if(l3.length){list.appendChild(grp("l3","level 3 · quick"));l3.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
-  if(l2.length){list.appendChild(grp("l2","level 2 · scheduled"));l2.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
-  if(l1.length){list.appendChild(grp("l1","level 1 · daily anchor"));l1.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
+  if(sched.length){list.appendChild(grp("sched","scheduled · by time"));sched.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
+  if(un1.length+un2.length+un3.length){
+    list.appendChild(grp("unsched","not scheduled"));
+    if(un1.length){list.appendChild(grp("l1 sub","level 1 · daily"));un1.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
+    if(un2.length){list.appendChild(grp("l2 sub","level 2 · scheduled"));un2.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
+    if(un3.length){list.appendChild(grp("l3 sub","level 3 · quick"));un3.forEach(t=>list.appendChild(renderTask(t,tabDate)));}
+  }
   if(!any&&!FROZEN)list.innerHTML='<div class="empty">nothing for '+fmtDM(tabDate)+' — hit ＋ task</div>';
   else if(!any)list.appendChild(Object.assign(document.createElement("div"),{className:"empty",textContent:"no tasks on "+fmtDM(tabDate)}));
   const up=upcomingOccurrences().length;
@@ -749,10 +761,10 @@ function grp(cls,label){const d=document.createElement("div");d.className="grp "
 function byTime(a,b){if((a.date||"")!==(b.date||""))return (a.date||"")<(b.date||"")?-1:1;if(a.hour!==b.hour)return a.hour<b.hour?-1:1;return (+a.sort)-(+b.sort);}
 function isOverdue(t,date){return !eventFor(t.id,date)&&(date<todayStr()||(date===todayStr()&&t.hour&&t.hour<nowHM()));}
 function hasNote(id){return notes.some(n=>n.task_id===id);}
-function editCluster(id){
-  if(moveMode)return `<span class="grip" data-grip="${id}" title="hold & drag to reorder">⠿</span>`;
-  if(deleteMode)return `<button class="xdel" data-act="del" data-id="${id}">✕</button>`;
-  if(levelMode){const t=byId(id);return `<span class="lvlpick">`+
+function editCluster(id,rowMode){
+  if(rowMode==="move")return `<span class="grip" data-grip="${id}" title="hold & drag to reorder">⠿</span>`;
+  if(rowMode==="del")return `<button class="xdel" data-act="del" data-id="${id}" title="delete">✕</button>`;
+  if(rowMode==="lvl"){const t=byId(id);return `<span class="lvlpick">`+
     ["1","2","3"].map(L=>`<button class="lp lp${L}${t.level===L?' on':''}" data-act="setlvl" data-id="${id}" data-l="${L}">${L}</button>`).join("")+`</span>`;}
   return `<button class="note${hasNote(id)?' has':''}" data-act="note" data-id="${id}" title="note">✎</button>`+
          `<button class="rst" data-act="reset" data-id="${id}" title="clear timer/time (keeps text)">↺</button>`;
@@ -763,8 +775,9 @@ function renderTask(t,occDate){
   const chkLock = (isDone && (()=>{const ev=eventFor(t.id,occDate);return ev&&!eventMutable(ev);})())||FROZEN;
   const canPlay = playAllowed(t,occDate)&&!FROZEN, isSW=!((parseFloat(t.dur)||0)>0);
   const showHour=t.level!=="3", showDate=t.level==="2";     // L2 = scheduled (date + hour); L1 = daily (hour); L3 = quick (neither)
-  const simple = deleteMode||levelMode||moveMode;           // edit modes: hide play / timer / time / min
-  const cls=["task","l"+t.level,isSW?"mode-sw":"mode-timer"];if(isDone)cls.push("done");if(!isDone&&!FROZEN&&isOverdue(t,occDate))cls.push("overdue");if(dragId===t.id)cls.push("dragging");if(FROZEN)cls.push("frozen");
+  const rowMode = moveMode?"move":(armed&&armed.id===t.id?armed.type:"normal");
+  const simple = rowMode!=="normal";                        // move / swipe-armed: hide play / timer / time / min
+  const cls=["task","l"+t.level,isSW?"mode-sw":"mode-timer"];if(isDone)cls.push("done");if(!isDone&&!FROZEN&&isOverdue(t,occDate))cls.push("overdue");if(dragId===t.id)cls.push("dragging");if(FROZEN)cls.push("frozen");if(rowMode==="del")cls.push("armdel");if(rowMode==="lvl")cls.push("armlvl");
   const wrap=document.createElement("div");
   const el=document.createElement("div");el.className=cls.join(" ");el.dataset.tid=t.id;
   el.innerHTML=`<div class="row">
@@ -777,7 +790,7 @@ function renderTask(t,occDate){
     ${(!simple&&showDate)?`<label class="pick dtpick"><span class="lbl">${t.date?fmtDayMon(t.date):'date'}</span><input type="date" data-act="date" data-id="${t.id}" value="${escAttr(t.date)}" ${FROZEN?"disabled":""}></label>`:''}
     ${(!simple&&showHour)?`<label class="pick hrpick"><span class="lbl">${t.hour||'--:--'}</span><input type="time" data-act="hour" data-id="${t.id}" value="${escAttr(t.hour)}" ${FROZEN?"disabled":""}></label>`:''}
     ${simple?'':`<input class="dur" data-act="dur" data-id="${t.id}" value="${escAttr(t.dur)}" placeholder="min" inputmode="decimal" ${FROZEN?"disabled":""}>`}
-    ${editCluster(t.id)}
+    ${editCluster(t.id,rowMode)}
     ${simple?'':(ended?`<button class="play" disabled title="time's up — check done">⏹</button>`
       :running?`<button class="play running" data-act="pause" data-id="${t.id}" data-date="${occDate}" title="${paused?'resume':'pause'}">${paused?'▶':'⏸'}</button>`
       :`<button class="play" data-act="play" data-id="${t.id}" data-date="${occDate}" ${(isDone||!canPlay)?"disabled":""} title="${!canPlay&&t.hour?('starts '+t.hour):''}">▶</button>`)}
@@ -813,10 +826,10 @@ listEl.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b
   const id=b.dataset.id,date=b.dataset.date,act=b.dataset.act;
   if(act==="play")play(id,date);
   if(act==="pause")togglePause(runKey(id,date));
-  if(act==="del")deleteTask(id);
+  if(act==="del"){armed=null;deleteTask(id);}
   if(act==="reset")resetTask(id);
   if(act==="note")openNote(id);
-  if(act==="setlvl"){setLevel(id,b.dataset.l);}
+  if(act==="setlvl"){armed=null;setLevel(id,b.dataset.l);}
   if(act==="repeat")openRepeat(id);
 });
 listEl.addEventListener("change",e=>{const b=e.target.closest("[data-act]");if(!b)return;
@@ -828,21 +841,32 @@ listEl.addEventListener("change",e=>{const b=e.target.closest("[data-act]");if(!
   if(act==="done"){ if(b.checked)markDone(id,date); else if(!undone(id,date))b.checked=true; }
 });
 
-/* drag the ⠿ handle (move mode) to reorder — drop above or below the row under the finger */
+/* ⠿ move-mode = grip drag to reorder; otherwise swipe a row ← (delete) / → (set level) */
 function rowElAt(x,y){const el=document.elementFromPoint(x,y);return el?el.closest("[data-tid]"):null;}
+let sw=null;   // {id, x, y, dx, dir, el}
 listEl.addEventListener("pointerdown",e=>{
-  const g=e.target.closest("[data-grip]");if(!g)return;
-  e.preventDefault();dragId=g.dataset.grip;snapshot();listEl.classList.add("dragging");
-  if(navigator.vibrate)navigator.vibrate(12);render();
+  const g=e.target.closest("[data-grip]");
+  if(g){e.preventDefault();dragId=g.dataset.grip;snapshot();listEl.classList.add("dragging");if(navigator.vibrate)navigator.vibrate(12);render();return;}
+  const row=e.target.closest("[data-tid]");
+  // tap outside the armed row's action -> disarm
+  if(armed && (!row||row.dataset.tid!==armed.id) && !e.target.closest("[data-act='del'],[data-act='setlvl']")){armed=null;render();}
+  if(moveMode||!row)return;
+  if(e.target.closest("button,select,.pick,.dur,.ck"))return;      // let controls work; swipe starts on body/text
+  sw={id:row.dataset.tid,x:e.clientX,y:e.clientY,dx:0,dir:null,el:row};
 });
 listEl.addEventListener("pointermove",e=>{
-  if(!dragId)return;e.preventDefault();const row=rowElAt(e.clientX,e.clientY);
-  if(!row)return;const over=row.dataset.tid;if(!over||over===dragId)return;
-  const r=row.getBoundingClientRect();const after=e.clientY>(r.top+r.height/2);   // lower half = drop below (lets you reach the very bottom)
-  if(reorder(dragId,over,after))render();
+  if(dragId){e.preventDefault();const row=rowElAt(e.clientX,e.clientY);
+    if(row){const over=row.dataset.tid;if(over&&over!==dragId){const r=row.getBoundingClientRect();if(reorder(dragId,over,e.clientY>(r.top+r.height/2)))render();}}return;}
+  if(!sw)return;const dx=e.clientX-sw.x,dy=e.clientY-sw.y;
+  if(Math.abs(dx)>8&&Math.abs(dx)>Math.abs(dy)){e.preventDefault();sw.dx=dx;sw.dir=dx<0?"del":"lvl";
+    sw.el.style.transform="translateX("+Math.max(-70,Math.min(70,dx))+"px)";
+    sw.el.style.background=dx<0?"rgba(200,60,60,.14)":"rgba(70,120,200,.14)";}
 },{passive:false});
 ["pointerup","pointercancel","pointerleave"].forEach(ev=>listEl.addEventListener(ev,()=>{
   if(dragId){dragId=null;listEl.classList.remove("dragging");saveTasks();render();}
+  if(sw){if(sw.el){sw.el.style.transform="";sw.el.style.background="";}
+    if(Math.abs(sw.dx)>=48&&sw.dir){const inp=sw.el.querySelector("input[data-act='text']");if(inp)inp.blur();armed={id:sw.id,type:sw.dir};render();}
+    sw=null;}
 }));
 
 /* ---------- modals ---------- */
@@ -1000,10 +1024,12 @@ function openStats(){
     <div class="stat"><span>level 2 · scheduled <span class="mut">30%</span></span><b>${show(s2)}</b></div>
     <div class="stat"><span>level 3 · quick <span class="mut">20%</span></span><b>${show(s3)}</b></div>
     <div class="stat"><span>skips in window</span><b>${skTot}${skTot?` <span class="mut">(−5% each/day)</span>`:''}</b></div>
+    ${disc&&settings.discStart?`<div class="stat"><span>current streak <span class="mut">since ${fmtDM(settings.discStart)}</span></span><b>${discStreak()} days</b></div>`:''}
 
     <div class="mbtns" style="margin-top:12px;flex-wrap:wrap">
       ${disc?`<button class="prime" onclick="migrateToDiscipline()">migrate from experiment</button>`:''}
-      <button class="del" onclick="clearStats()">reset ${settings.mode}</button>
+      ${disc?`<button onclick="openArchives()">archive list</button>`:''}
+      <button class="del" onclick="${disc?'resetDiscipline()':'clearStats()'}">reset ${settings.mode}</button>
     </div>
     <div class="hint">Each <b>day</b> gets a total: the level scores (% of that level's tasks checked that day) blended L1·50 L2·30 L3·20 — renormalized across levels that had tasks — minus 5% per skip that day. A multi-day window is the <b>average of those daily totals</b>. Experiment & discipline keep <b>separate</b> tasks and data.</div>`);
 }
@@ -1012,12 +1038,64 @@ window.setWin=function(w){statWin=w;openStats();};
 window.migrateToDiscipline=function(){
   const src=tasks.filter(t=>t.mode==="experiment");
   if(!src.length){toast("no experiment tasks");return;}
-  if(!confirm("Copy all "+src.length+" experiment task(s) into discipline mode? Statistics are NOT copied — discipline tracking starts today."))return;
+  if(!confirm("Copy all "+src.length+" experiment task(s) (every level) into discipline mode? Statistics are NOT copied — the discipline streak starts today."))return;
   src.forEach(t=>{tasks.push(normTask({id:uid(),level:t.level,text:t.text,date:t.date,hour:t.hour,dur:t.dur,
     mode:"discipline",repeat:t.repeat,sort:t.sort,gcal:t.gcal}));});
-  settings.lastRoll_discipline=todayStr();                    // discipline stats begin on migration day (no back-misses)
+  settings.lastRoll_discipline=todayStr();settings.discStart=todayStr();   // streak + stats begin on migration day
   saveTasks();saveSettings();closeModal();render();toast("migrated "+src.length+" to discipline");
 };
+/* ---------- discipline run stats + archives ---------- */
+function _dayLvlRatio(D,L,cur){
+  const dn=events.filter(e=>e.mode===cur&&e.level===L&&e.date===D&&e.kind==="done").length;
+  const ms=events.filter(e=>e.mode===cur&&e.level===L&&e.date===D&&e.kind==="miss").length;
+  let open=0;const today=todayStr();
+  if(D===today)tasks.filter(t=>t.mode===cur&&t.level===L&&t.skipped!=="1"&&occursOn(t,today,weekdayIdxOf(today))).forEach(t=>{if(!eventFor(t.id,today))open++;});
+  const tot=dn+ms+open;return tot?dn/tot:null;
+}
+function _dayTot(D,cur){const W={1:50,2:30,3:20};let num=0,den=0;[1,2,3].forEach(L=>{const r=_dayLvlRatio(D,String(L),cur);if(r!=null){num+=W[L]*r*100;den+=W[L];}});
+  const sk=events.filter(e=>e.mode===cur&&e.date===D&&e.kind==="skip").length;
+  if(den)return Math.max(0,Math.min(100,Math.round(num/den-5*sk)));return sk?Math.max(0,100-5*sk):null;}
+function runStats(startISO,cur){
+  const today=todayStr(),days=[];for(let d=new Date(startISO+"T00:00");ymd(d)<=today;d.setDate(d.getDate()+1))days.push(ymd(d));
+  const avg=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):null;
+  const lw=L=>avg(days.map(D=>{const r=_dayLvlRatio(D,String(L),cur);return r==null?null:Math.round(r*100);}).filter(x=>x!=null));
+  return {overall:avg(days.map(D=>_dayTot(D,cur)).filter(x=>x!=null)),s1:lw("1"),s2:lw("2"),s3:lw("3"),days:days.length,start:startISO,end:today};
+}
+function discStreak(){const s=settings.discStart;return s?Math.max(1,daysBetween(s,todayStr())+1):0;}
+window.resetDiscipline=function(){
+  openModal(`<h3>Reset the discipline streak? <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    <div class="hint">Save this streak to your archive first, or reset without saving. Either way the discipline stats & streak start clean from today — your tasks stay.</div>
+    <input id="arcn" placeholder="streak name (if saving)" style="width:100%;margin-top:8px">
+    <div class="mbtns" style="flex-wrap:wrap"><button onclick="closeModal()">cancel</button><button onclick="doDiscReset(false)">don't save</button><button class="prime" onclick="doDiscReset(true)">save</button></div>`);
+};
+window.doDiscReset=function(save){
+  if(save){const name=((document.getElementById("arcn")||{}).value||"").trim()||("streak "+todayStr());
+    const st=runStats(settings.discStart||settings.lastRoll_discipline||todayStr(),"discipline");
+    const P=v=>v==null?"":String(v);
+    archives.push({name,start:st.start,end:st.end,days:String(st.days),overall:P(st.overall),l1:P(st.s1),l2:P(st.s2),l3:P(st.s3),saved:new Date().toISOString()});
+    saveArchives();
+  }
+  events=events.filter(e=>e.mode!=="discipline");                        // clean stats, keep the tasks
+  tasks.forEach(t=>{if(t.mode==="discipline"&&t.skipped==="1"){t.skipped="0";t.skipStart="";t.skipEnd="";}});
+  settings.discStart=todayStr();settings.lastRoll_discipline=todayStr();
+  saveEvents();saveTasks();saveSettings();closeModal();render();toast(save?"streak saved · clean start":"clean start");
+};
+function openArchives(){
+  openModal(`<h3>discipline archives (${archives.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    <div class="hint">Saved discipline streaks. Tap one for its details.</div>
+    ${archives.length?archives.map((a,i)=>i).reverse().map(i=>{const a=archives[i];return `<div class="skrow"><span class="skt" onclick="showArchive(${i})">${escAttr(a.name)} <span class="mut">${a.days}d</span></span><span class="skd">${fmtDM(a.start)}→${fmtDM(a.end)}</span><button class="xdel" onclick="delArchive(${i})">✕</button></div>`;}).join(""):'<div class="empty">no archives yet</div>'}`);
+}
+window.showArchive=function(i){const a=archives[i];if(!a)return;const P=v=>v===""||v==null?"—":v+"%";
+  openModal(`<h3>${escAttr(a.name)} <span class="x"><button onclick="openArchives()">✕</button></span></h3>
+    <div class="stat"><span>streak length</span><b>${a.days} days</b></div>
+    <div class="stat"><span>period</span><b>${fmtD(a.start)} → ${fmtD(a.end)}</b></div>
+    <div class="stat"><span><b>Discipline</b></span><b>${P(a.overall)}</b></div>
+    <div class="stat"><span>level 1 · daily</span><b>${P(a.l1)}</b></div>
+    <div class="stat"><span>level 2 · scheduled</span><b>${P(a.l2)}</b></div>
+    <div class="stat"><span>level 3 · quick</span><b>${P(a.l3)}</b></div>
+    <div class="mbtns"><button onclick="openArchives()">← back</button></div>`);
+};
+window.delArchive=function(i){archives.splice(i,1);saveArchives();openArchives();};
 /* ---------- level-1 presets ---------- */
 function openPresets(){
   const cur=settings.mode,names=[...new Set(presets.map(p=>p.preset))].sort();
@@ -1051,7 +1129,11 @@ window.newL1=function(){
   if(!confirm("Remove all "+l1.length+" level-1 anchor(s) from "+cur+" mode? Save a preset first if you want to keep them."))return;
   snapshot();tasks=tasks.filter(t=>!(t.mode===cur&&t.level==="1"));saveTasks();closeModal();render();toast("level-1 cleared");
 };
-window.delPreset=function(name){presets=presets.filter(p=>p.preset!==name);savePresets();openPresets();};
+window.delPreset=function(name){
+  openModal(`<h3>Delete preset “${escAttr(name)}”?</h3>
+    <div class="mbtns"><button onclick="openPresets()">ups, no!</button><button class="del" onclick="reallyDelPreset(this.dataset.n)" data-n="${escAttr(name)}">yep</button></div>`);
+};
+window.reallyDelPreset=function(name){presets=presets.filter(p=>p.preset!==name);savePresets();openPresets();};
 window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";weekOffset=0;saveSettings();rollover();catchUp();accrueRecurring();openStats();render();};
 window.clearStats=function(){
   const cur=settings.mode;
@@ -1061,6 +1143,7 @@ window.clearStats=function(){
   events=events.filter(e=>e.mode!==cur);
   notes=notes.filter(n=>!ids.has(n.task_id));
   settings["lastRoll_"+cur]="";
+  if(cur==="discipline")settings.discStart="";
   saveTasks();saveEvents();saveNotes();saveSettings();closeModal();render();toast(cur+" reset");
 };
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+"h "+m+"m":m+"m";}
@@ -1073,13 +1156,14 @@ window.importSound=function(){ if(!timerDir){toast("connect first");return;}
 function dl(name,text){const b=new Blob([text],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");
   a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}
 window.exportData=function(){ if(!timerDir){toast("connect first");return;}
-  dl(TASKS_CSV,toCSV(TASK_H,tasks));dl(EVENTS_CSV,toCSV(EVT_H,events));dl(NOTES_CSV,toCSV(NOTE_H,notes));if(presets.length)dl(PRESET_CSV,toCSV(PRESET_H,presets));toast("CSV files downloaded");};
+  dl(TASKS_CSV,toCSV(TASK_H,tasks));dl(EVENTS_CSV,toCSV(EVT_H,events));dl(NOTES_CSV,toCSV(NOTE_H,notes));if(presets.length)dl(PRESET_CSV,toCSV(PRESET_H,presets));if(archives.length)dl(ARCHIVE_CSV,toCSV(ARCHIVE_H,archives));toast("CSV files downloaded");};
 window.importData=function(){ if(!timerDir){toast("connect first");return;}
   pickFile(".csv",true,async files=>{for(const f of files){const txt=await f.text();
       if(/task/i.test(f.name))await writeFile(timerDir,TASKS_CSV,txt);
       else if(/event/i.test(f.name))await writeFile(timerDir,EVENTS_CSV,txt);
       else if(/note/i.test(f.name))await writeFile(timerDir,NOTES_CSV,txt);
-      else if(/preset/i.test(f.name))await writeFile(timerDir,PRESET_CSV,txt);}
+      else if(/preset/i.test(f.name))await writeFile(timerDir,PRESET_CSV,txt);
+      else if(/archive/i.test(f.name))await writeFile(timerDir,ARCHIVE_CSV,txt);}
     await loadAll();toast("data restored");});};
 function openMore(){openModal(`<h3>data & sound <span class="x"><button onclick="closeModal()">✕</button></span></h3>
   <div class="addbtn">
@@ -1176,9 +1260,7 @@ document.getElementById("btnConnect").onclick=connect;
 document.getElementById("btnMore").onclick=openMore;
 document.getElementById("btnReload").onclick=async()=>{if(!timerDir){connect();return;}await loadAll();await loadSound();};
 document.getElementById("btnAdd").onclick=()=>{if(!timerDir){toast(HAS_FSA?"connect a folder first":"tap start first");return;}addTask();};
-document.getElementById("btnDel").onclick=()=>{deleteMode=!deleteMode;if(deleteMode){levelMode=false;moveMode=false;}render();};
-document.getElementById("btnLvl").onclick=()=>{levelMode=!levelMode;if(levelMode){deleteMode=false;moveMode=false;}render();};
-document.getElementById("btnMove").onclick=()=>{moveMode=!moveMode;if(moveMode){deleteMode=false;levelMode=false;}render();};
+document.getElementById("btnMove").onclick=()=>{moveMode=!moveMode;armed=null;render();};
 document.getElementById("btnPrevWk").onclick=()=>{weekOffset--;render();};
 document.getElementById("btnHome").onclick=()=>{weekOffset=0;currentDay=jsDayToIdx(new Date().getDay());render();};
 document.getElementById("btnSkip").onclick=openSkipped;
