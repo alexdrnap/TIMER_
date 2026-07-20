@@ -249,12 +249,12 @@
 const DAYLABEL=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const ONTIME_TOL=5;
 const L1_TARGET=5;                       // level-1 days/week goal
-const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv", SETTINGS_CSV="settings.csv", GCAL_CSV="google_L2_import.csv";
+const TASKS_CSV="tasks.csv", EVENTS_CSV="events.csv", NOTES_CSV="notes.csv", SETTINGS_CSV="settings.csv", GCAL_CSV="google_L2_import.csv", PRESET_CSV="l1_presets.csv";
 const SOUND_FILE="timer_sound.wav", BOM="\uFEFF";
 
 /* ---------- state ---------- */
 let dbDir=null,timerDir=null;
-let tasks=[],events=[],notes=[];
+let tasks=[],events=[],notes=[],presets=[];
 let settings={mode:"experiment",tickOn:false,tickVol:1,lastRoll_experiment:"",lastRoll_discipline:"",gcalClient:""};
 let currentDay=jsDayToIdx(new Date().getDay());
 let deleteMode=false, levelMode=false, moveMode=false, weekOffset=0;
@@ -277,11 +277,6 @@ function weekDates(off){off=off||0;const d=new Date();const idx=jsDayToIdx(d.get
 function weekdayIdxOf(dateStr){return jsDayToIdx(new Date(dateStr+"T00:00").getDay());}
 const WD_SHORT=["M","Tu","W","Th","F","Sa","Su"];                 // Mon-indexed
 function repDays(t){return (t.repeat||"").split(",").filter(x=>x!=="").map(Number);}
-function repeatSpec(t){                                            // small corner label
-  if(t.level==="3"&&t.repeat)return repDays(t).map(i=>WD_SHORT[i]).join("/");
-  if(t.level==="2"&&(t.repeat==="m"||t.repeat==="y"))return t.repeat;
-  return "";
-}
 function occursOn(t,dateStr,wdIdx){                                // does this task have an occurrence on dateStr?
   if(t.skipped==="1")return false;
   if(t.level==="1")return true;                                   // daily anchor
@@ -292,13 +287,20 @@ function occursOn(t,dateStr,wdIdx){                                // does this 
   if(t.level==="2"){
     if(!t.repeat)return t.date===dateStr;                         // once
     if(dateStr<(t.date||""))return false;
+    if(t.repeat==="3d"||t.repeat==="2w"){const iv=t.repeat==="2w"?14:3;return daysBetween(t.date,dateStr)%iv===0;}  // every 3 / 14 days from anchor
     const a=(t.date||"").split("-").map(Number),d=dateStr.split("-").map(Number);
     if(t.repeat==="m"){const occ=Math.min(a[2],daysInMonth(d[0],d[1]));return d[2]===occ;}   // monthly; clamp (31 -> 30/28)
     if(t.repeat==="y"){const occ=Math.min(a[2],daysInMonth(d[0],a[1]));return d[1]===a[1]&&d[2]===occ;}  // yearly; Feb29 -> Feb28
   }
   return false;
 }
+function repeatSpec(t){                                            // small corner label
+  if(t.level==="3"&&t.repeat)return repDays(t).map(i=>WD_SHORT[i]).join("/");
+  if(t.level==="2"&&t.repeat)return t.repeat;                      // m / y / 2w / 3d
+  return "";
+}
 function daysInMonth(y,m){return new Date(y,m,0).getDate();}      // m is 1-12
+function addDays(iso,n){return ymd(new Date(new Date(iso+"T00:00").getTime()+n*86400000));}
 function addMonths(iso,n){const p=iso.split("-").map(Number);let y=p[0],m=p[1]-1+n;y+=Math.floor(m/12);m=((m%12)+12)%12;const day=Math.min(p[2],daysInMonth(y,m+1));return y+"-"+String(m+1).padStart(2,"0")+"-"+String(day).padStart(2,"0");}
 function addYears(iso,n){const p=iso.split("-").map(Number),y=p[0]+n,day=Math.min(p[2],daysInMonth(y,p[1]));return y+"-"+String(p[1]).padStart(2,"0")+"-"+String(day).padStart(2,"0");}
 function daysBetween(a,b){return Math.round((new Date(b+"T00:00")-new Date(a+"T00:00"))/86400000);}
@@ -352,6 +354,7 @@ async function loadAll(){
   const tt=await readFile(timerDir,TASKS_CSV);tasks=tt?parseCSV(tt).map(normTask):[];
   const et=await readFile(timerDir,EVENTS_CSV);events=et?parseCSV(et):[];
   const nt=await readFile(timerDir,NOTES_CSV);notes=nt?parseCSV(nt):[];
+  const pt=await readFile(timerDir,PRESET_CSV);presets=pt?parseCSV(pt):[];
   events.forEach(e=>{if(!e.created)e.created=e.played_at||(e.date?e.date+"T12:00:00":new Date().toISOString());
     if(!e.kind)e.kind="done";if(!e.mode)e.mode="experiment";if(e.timer!=="0"&&e.timer!=="1")e.timer="1";});
   const stx=await readFile(timerDir,SETTINGS_CSV);
@@ -380,6 +383,8 @@ function normTask(o){return{id:o.id||uid(),parent:o.parent||"",level:(o.level===
 const TASK_H=["id","parent","level","text","date","hour","dur","done","acc","mode","origin","repeat","skipped","skipStart","skipEnd","gcal","sort","created"];
 const EVT_H =["id","task_id","level","date","kind","mode","timer","played_at","elapsed_sec","created"];
 const NOTE_H=["id","task_id","task_text","level","date","time","note","audio"];
+const PRESET_H=["preset","text","hour","dur"];
+async function savePresets(){if(timerDir)await writeFile(timerDir,PRESET_CSV,toCSV(PRESET_H,presets));}
 async function saveTasks(){if(timerDir)await writeFile(timerDir,TASKS_CSV,toCSV(TASK_H,tasks));}
 async function saveEvents(){if(timerDir)await writeFile(timerDir,EVENTS_CSV,toCSV(EVT_H,events));}
 async function saveNotes(){if(timerDir)await writeFile(timerDir,NOTES_CSV,toCSV(NOTE_H,notes));}
@@ -581,8 +586,8 @@ function accrueRecurring(){   // recurring L2/L3: miss on passed unchecked occur
     const dones=events.filter(e=>e.task_id===t.id&&e.kind==="done"&&e.mode===cur).map(e=>e.date).sort();
     const lastDone=dones.length?dones[dones.length-1]:null;
     const ref=lastDone||base;
-    const cycleEnd = t.level==="3" ? ymd(new Date(new Date(ref+"T00:00").getTime()+7*86400000))
-                    : (t.repeat==="m" ? addMonths(ref,1) : addYears(ref,1));
+    const cycleEnd = t.level==="3" ? addDays(ref,7)
+                    : (t.repeat==="m" ? addMonths(ref,1) : t.repeat==="y" ? addYears(ref,1) : addDays(ref, t.repeat==="2w"?14:3));
     const shouldSkip = today>=cycleEnd;
     if(shouldSkip && t.skipped!=="1"){                               // abandoned a full cycle -> skip
       t.skipped="1";t.skipStart=base;t.skipEnd=today;tCh=true;
@@ -638,7 +643,7 @@ function openRepeat(id){
   }else if(t.level==="2"){
     openModal(`<h3>repeat — level 2 <span class="x"><button onclick="closeModal()">✕</button></span></h3>
       <div class="hint">Repeat this scheduled task, or "once".</div>
-      <div class="modesw rp"><button class="${!t.repeat?'sel':''}" data-rp="">once</button><button class="${t.repeat==='m'?'sel':''}" data-rp="m">monthly</button><button class="${t.repeat==='y'?'sel':''}" data-rp="y">yearly</button></div>
+      <div class="modesw rp"><button class="${!t.repeat?'sel':''}" data-rp="">once</button><button class="${t.repeat==='3d'?'sel':''}" data-rp="3d">3d</button><button class="${t.repeat==='2w'?'sel':''}" data-rp="2w">2w</button><button class="${t.repeat==='m'?'sel':''}" data-rp="m">monthly</button><button class="${t.repeat==='y'?'sel':''}" data-rp="y">yearly</button></div>
       <div class="mbtns"><button class="prime" onclick="closeModal()">done</button></div>`);
     sheet.querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>{t.repeat=b.dataset.rp;t.skipped="0";t.skipStart="";t.skipEnd="";saveTasks();openRepeat(id);render();});
   }
@@ -652,10 +657,10 @@ window.saveRepeat=function(id){const t=byId(id);if(!t)return;
 window.clearRepeat=function(id){const t=byId(id);if(!t)return;t.repeat="";t.skipped="0";saveTasks();closeModal();render();};
 function nextOccurrence(t){const today=todayStr();let d=new Date(today+"T00:00");
   for(let i=0;i<400;i++){const ds=ymd(d);if(ds>=(t.date||"")&&occursOnRaw(t,ds,weekdayIdxOf(ds)))return ds;d.setDate(d.getDate()+1);}return t.date||today;}
-function upcomingOccurrences(){    // every task occurrence (all levels) in the next 30 days, chronological
-  const cur=settings.mode,out=[],base=new Date(todayStr()+"T00:00");
+function upcomingOccurrences(){    // ONE row per task — its first occurrence within the next 30 days, chronological
+  const cur=settings.mode,out=[],seen=new Set(),base=new Date(todayStr()+"T00:00");
   for(let i=1;i<=30;i++){const d=new Date(base);d.setDate(d.getDate()+i);const ds=ymd(d),wd=weekdayIdxOf(ds);
-    tasks.filter(t=>t.mode===cur&&t.skipped!=="1"&&occursOn(t,ds,wd)).forEach(t=>out.push({t,d:ds}));}
+    tasks.filter(t=>t.mode===cur&&t.skipped!=="1"&&!seen.has(t.id)&&occursOn(t,ds,wd)).forEach(t=>{seen.add(t.id);out.push({t,d:ds});});}
   out.sort((a,b)=>(a.d+(a.t.hour||""))<(b.d+(b.t.hour||""))?-1:1);return out;
 }
 function occursOnRaw(t,dateStr,wdIdx){const s=t.skipped;t.skipped="0";const r=occursOn(t,dateStr,wdIdx);t.skipped=s;return r;}  // ignore skipped flag (for finding where it WOULD land)
@@ -667,9 +672,9 @@ function gotoDate(iso){if(!iso)return;
   closeModal();render();}
 window.gotoDate=gotoDate;
 function openSkipped(){
-  const cur=settings.mode,wk30=ymd(new Date(Date.now()-30*86400000));
-  const list=tasks.filter(t=>t.mode===cur&&t.skipped==="1"&&(t.skipEnd||"")>=wk30).sort((a,b)=>(a.skipEnd||"").localeCompare(b.skipEnd||""));
-  openModal(`<h3>skipped — last 30 days (${list.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+  const cur=settings.mode;
+  const list=tasks.filter(t=>t.mode===cur&&t.skipped==="1").sort((a,b)=>(a.skipEnd||"").localeCompare(b.skipEnd||""));
+  openModal(`<h3>skipped (${list.length}) <span class="x"><button onclick="closeModal()">✕</button></span></h3>
     <div class="hint">Recurring tasks abandoned for a full cycle. Each takes 5% off its level's discipline. Tap one to jump to its next occurrence; ↺ un-skips it.</div>
     ${list.length?list.map(t=>`<div class="skrow"><span class="sklvl lv${t.level}" onclick="gotoDate('${nextOccurrence(t)}')">≠</span><span class="skt" onclick="gotoDate('${nextOccurrence(t)}')">${escAttr(t.text||"(unnamed)")}</span><span class="skd">${fmtDM(t.skipStart)}→${fmtDM(t.skipEnd)}</span><button class="rst" onclick="unskip('${t.id}')" title="un-skip">↺</button><button class="xdel" onclick="delSkipped('${t.id}')">✕</button></div>`).join(""):'<div class="empty">none in the last 7 days</div>'}`);
 }
@@ -735,8 +740,7 @@ function render(){
   if(!any&&!FROZEN)list.innerHTML='<div class="empty">nothing for '+fmtDM(tabDate)+' — hit ＋ task</div>';
   else if(!any)list.appendChild(Object.assign(document.createElement("div"),{className:"empty",textContent:"no tasks on "+fmtDM(tabDate)}));
   const up=upcomingOccurrences().length;
-  const wk30=ymd(new Date(Date.now()-30*86400000));
-  const skips=tasks.filter(t=>mine(t)&&t.skipped==="1"&&(t.skipEnd||"")>=wk30).length;
+  const skips=tasks.filter(t=>mine(t)&&t.skipped==="1").length;
   document.getElementById("btnNext").textContent="»» "+up;
   const sb=document.getElementById("btnSkip");if(sb)sb.textContent="≠ "+skips;
   document.getElementById("count").textContent=(weekOffset?fmtDM(tabDate)+" · ":"")+any+" shown";
@@ -939,16 +943,18 @@ function openLog(){
 }
 document.getElementById("btnLog").onclick=openLog;
 
-/* next = every task occurrence (all levels) in the next 7 days */
+/* next = one row per task (first occurrence in next 30 days), grouped by level */
 document.getElementById("btnNext").onclick=()=>{
   const items=upcomingOccurrences();
-  const rows=items.map(o=>`<div class="np" onclick="gotoDate('${o.d}')">
-    <span class="np-l lv${o.t.level}">L${o.t.level}</span>
+  const row=o=>`<div class="np" onclick="gotoDate('${o.d}')">
     <span class="h">${escAttr(o.t.text||"task")}${repeatSpec(o.t)?` <span class="mut">·${repeatSpec(o.t)}</span>`:''}</span>
-    <div class="when mut" style="font-size:11px">${fmtDayMon(o.d)} · ${DAYLABEL[weekdayIdxOf(o.d)]}${o.t.hour?' · '+o.t.hour:''}${o.t.dur?' · '+o.t.dur+'m':''}</div></div>`).join("");
+    <div class="when mut" style="font-size:11px">${fmtDayMon(o.d)} · ${DAYLABEL[weekdayIdxOf(o.d)]}${o.t.hour?' · '+o.t.hour:''}${o.t.dur?' · '+o.t.dur+'m':''}</div></div>`;
+  const NAMES={1:"level 1 · daily",2:"level 2 · scheduled",3:"level 3 · quick"};
+  let body="";
+  [1,2,3].forEach(L=>{const g=items.filter(o=>o.t.level===String(L));if(g.length)body+=`<div class="grp l${L}"><span class="dot"></span>${NAMES[L]}</div>`+g.map(row).join("");});
   openModal(`<h3>»» next 30 days <span class="x"><button onclick="closeModal()">✕</button></span></h3>
-    ${items.length?rows:'<div class="empty">nothing in the next 30 days</div>'}
-    <div class="hint">Every upcoming occurrence across all levels. Tap one to jump to its day.</div>`);
+    ${body||'<div class="empty">nothing in the next 30 days</div>'}
+    <div class="hint">Each task once, at its first upcoming occurrence. Tap one to jump to its day.</div>`);
 };
 
 /* ---------- mode_switch (discipline stats, per-mode dataset) ---------- */
@@ -1012,6 +1018,40 @@ window.migrateToDiscipline=function(){
   settings.lastRoll_discipline=todayStr();                    // discipline stats begin on migration day (no back-misses)
   saveTasks();saveSettings();closeModal();render();toast("migrated "+src.length+" to discipline");
 };
+/* ---------- level-1 presets ---------- */
+function openPresets(){
+  const cur=settings.mode,names=[...new Set(presets.map(p=>p.preset))].sort();
+  const curL1=tasks.filter(t=>t.mode===cur&&t.level==="1").length;
+  openModal(`<h3>level-1 presets <span class="x"><button onclick="closeModal()">✕</button></span></h3>
+    <div class="hint">Save your current ${curL1} daily anchor(s) as a reusable set, load one in, or clear to start fresh. (${cur} mode)</div>
+    <div class="addbtn">
+      <button onclick="savePreset()">＋ save current L1 as preset</button>
+      <button class="del" onclick="newL1()">⟲ new — clear level 1</button>
+    </div>
+    ${names.length?names.map(n=>{const cnt=presets.filter(p=>p.preset===n).length;
+      return `<div class="skrow"><span class="skt">${escAttr(n)} <span class="mut">(${cnt})</span></span><button class="rst" onclick="loadPreset(this.dataset.n)" data-n="${escAttr(n)}">load</button><button class="xdel" onclick="delPreset(this.dataset.n)" data-n="${escAttr(n)}">✕</button></div>`;}).join(""):'<div class="empty">no presets saved yet</div>'}`);
+}
+window.savePreset=function(){
+  const cur=settings.mode,l1=tasks.filter(t=>t.mode===cur&&t.level==="1");
+  if(!l1.length){toast("no level-1 tasks to save");return;}
+  const name=(prompt("Preset name:")||"").trim();if(!name)return;
+  presets=presets.filter(p=>p.preset!==name);
+  l1.forEach(t=>presets.push({preset:name,text:t.text,hour:t.hour,dur:t.dur}));
+  savePresets();openPresets();toast("saved “"+name+"”");
+};
+window.loadPreset=function(name){
+  const cur=settings.mode,rows=presets.filter(p=>p.preset===name);if(!rows.length)return;
+  snapshot();
+  rows.forEach(r=>tasks.push(normTask({id:uid(),level:"1",text:r.text,hour:r.hour,dur:r.dur,mode:cur,sort:String(tasks.length)})));
+  saveTasks();closeModal();render();toast("loaded “"+name+"” ("+rows.length+")");
+};
+window.newL1=function(){
+  const cur=settings.mode,l1=tasks.filter(t=>t.mode===cur&&t.level==="1");
+  if(!l1.length){toast("no level-1 tasks");return;}
+  if(!confirm("Remove all "+l1.length+" level-1 anchor(s) from "+cur+" mode? Save a preset first if you want to keep them."))return;
+  snapshot();tasks=tasks.filter(t=>!(t.mode===cur&&t.level==="1"));saveTasks();closeModal();render();toast("level-1 cleared");
+};
+window.delPreset=function(name){presets=presets.filter(p=>p.preset!==name);savePresets();openPresets();};
 window.setMode=function(m){settings.mode=(m==="discipline")?"discipline":"experiment";weekOffset=0;saveSettings();rollover();catchUp();accrueRecurring();openStats();render();};
 window.clearStats=function(){
   const cur=settings.mode;
@@ -1033,18 +1073,20 @@ window.importSound=function(){ if(!timerDir){toast("connect first");return;}
 function dl(name,text){const b=new Blob([text],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");
   a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}
 window.exportData=function(){ if(!timerDir){toast("connect first");return;}
-  dl(TASKS_CSV,toCSV(TASK_H,tasks));dl(EVENTS_CSV,toCSV(EVT_H,events));dl(NOTES_CSV,toCSV(NOTE_H,notes));toast("3 CSV files downloaded");};
+  dl(TASKS_CSV,toCSV(TASK_H,tasks));dl(EVENTS_CSV,toCSV(EVT_H,events));dl(NOTES_CSV,toCSV(NOTE_H,notes));if(presets.length)dl(PRESET_CSV,toCSV(PRESET_H,presets));toast("CSV files downloaded");};
 window.importData=function(){ if(!timerDir){toast("connect first");return;}
   pickFile(".csv",true,async files=>{for(const f of files){const txt=await f.text();
       if(/task/i.test(f.name))await writeFile(timerDir,TASKS_CSV,txt);
       else if(/event/i.test(f.name))await writeFile(timerDir,EVENTS_CSV,txt);
-      else if(/note/i.test(f.name))await writeFile(timerDir,NOTES_CSV,txt);}
+      else if(/note/i.test(f.name))await writeFile(timerDir,NOTES_CSV,txt);
+      else if(/preset/i.test(f.name))await writeFile(timerDir,PRESET_CSV,txt);}
     await loadAll();toast("data restored");});};
 function openMore(){openModal(`<h3>data & sound <span class="x"><button onclick="closeModal()">✕</button></span></h3>
   <div class="addbtn">
     <button onclick="importSound()">♪ import timer sound (.wav)</button>
     <button onclick="exportData()">⭳ export / back up data (CSV)</button>
     <button onclick="importData()">⭱ restore data from CSV files</button>
+    <button onclick="openPresets()">① level-1 presets (save / load / new)</button>
     <button onclick="importGCal()">📅 import_level_2_from_Google_calendar</button>
   </div>
   <div class="hint">${HAS_FSA
