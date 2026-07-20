@@ -42,6 +42,8 @@
   .hbtns{display:flex;gap:9px;flex-wrap:wrap;margin-left:auto;align-items:center}
   .hgroup{display:inline-flex;gap:3px;align-items:center;padding:2px 4px;border-radius:7px;background:#0e1015;border:1px solid var(--line)}
   .conn{color:var(--dim);font-size:11px}.conn.ok{color:var(--green)}
+  .clight{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:5px;vertical-align:middle;box-shadow:0 0 4px var(--danger)}
+  #btnConnect.ok .clight{background:var(--green);box-shadow:0 0 5px var(--green)}
   .add{color:var(--green);border-color:#2c4a38}
   .del{color:var(--danger);border-color:#4a2c2c}.del.on{background:#33191a;color:#ffb4b1}
   #btnLvl.on{background:#0f1620;color:var(--ink);outline:1px solid var(--l2)}
@@ -222,10 +224,9 @@
     </span>
     <span class="hgroup">
       <button id="btnMore" title="data & sound">⋯</button>
-      <button id="btnConnect">connect</button>
+      <button id="btnConnect"><span class="clight"></span><span id="connlbl">connect</span></button>
       <button id="btnReload" title="reload">⟳</button>
     </span>
-    <span id="conn" class="conn">not connected</span>
   </div>
 </header>
 
@@ -351,7 +352,7 @@ async function connect(){
       if(navigator.storage.persist)navigator.storage.persist().catch(()=>{});
     }
     await loadAll();await loadSound();primeAudio();
-    setConn(HAS_FSA?"✓ TIMER":"✓ on-device",true);
+    setConn("connected",true);
   }catch(e){if(e.name!=="AbortError"){console.error(e);setConn("connect failed",false);}}
 }
 async function readFile(dir,name){try{const h=await dir.getFileHandle(name);return await (await h.getFile()).text();}catch(e){return null;}}
@@ -433,9 +434,9 @@ async function customBeepSamples(rate,seconds){   // imported timer_sound.wav, l
   return out;
 }
 function silentURL(){const b=wav8(8000,new Uint8Array(800).fill(128));let s="";b.forEach(x=>s+=String.fromCharCode(x));return "data:audio/wav;base64,"+btoa(s);}
-async function buildAlarmURL(remaining){
+async function buildAlarmURL(remaining,beepSecs){
   remaining=Math.max(0,Math.min(remaining,3*3600));
-  const rate=remaining>1800?4000:8000,BEEP=5;
+  const rate=remaining>1800?4000:8000,BEEP=beepSecs||5;
   const silN=Math.floor(remaining*rate);
   const beep=customBuf?await customBeepSamples(rate,BEEP):beepSamples(rate,BEEP);
   const data=new Uint8Array(silN+beep.length);
@@ -496,7 +497,7 @@ function play(id,date){
   const st={t0:Date.now(),dur,before,paused:false,iv:null,playedISO:new Date().toISOString()};
   st.iv=setInterval(()=>tick(key,st),250);timers.set(key,st);
   if(dur>0)armAudio(key,dur);           // beeps 5s at the end — baked so it fires even when the screen is locked
-  render();
+  render();updateKeepAlive();
 }
 function elapsedOf(st){let e=st.before+(st.paused?0:(Date.now()-st.t0)/1000);
   if(st.dur>0&&e>=st.dur)e=st.dur;                    // timer never counts past its duration
@@ -516,13 +517,13 @@ function togglePause(key){
     if(st.dur<=0){const t=byId(key.split("|")[0]);if(t){t.acc=String(Math.floor(st.before));saveTasks();}}   // stopwatch: store running total
     if("mediaSession" in navigator)navigator.mediaSession.playbackState="paused";
   }
-  render();
+  render();updateKeepAlive();
 }
 function tick(key,st){
   if(st.dur>0 && !st.ended && (st.before+(Date.now()-st.t0)/1000)>=st.dur){    // reached the end
     st.ended=true;clearInterval(st.iv);st.iv=null;
     try{if(navigator.vibrate)navigator.vibrate(BEEP_VIBE);}catch(e){}          // end = vibrate in the beep rhythm
-    render();return;
+    render();updateKeepAlive();return;
   }
   const disp=document.querySelector(`.elapsed[data-run="${key}"]`);
   if(disp){disp.textContent=fmtElapsed(st);disp.classList.toggle("alarm",st.dur>0&&elapsedOf(st)>=st.dur);}
@@ -696,7 +697,7 @@ window.unskip=function(id){const t=byId(id);if(!t)return;t.skipped="0";t.skipSta
 window.delSkipped=function(id){snapshot();tasks=tasks.filter(x=>x.id!==id);saveTasks();openSkipped();render();};
 function resetTask(id){const t=byId(id);if(!t)return;snapshot();
   [...timers.keys()].filter(k=>k.split("|")[0]===id).forEach(k=>{const st=timers.get(k);if(st&&st.iv)clearInterval(st.iv);timers.delete(k);stopAudio(k);});
-  t.dur="";t.hour="";t.acc="0";saveTasks();render();}          // keeps the text field
+  t.acc="0";saveTasks();render();updateKeepAlive();}          // resets the elapsed / stored time only — keeps minutes, time & text
 const MON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
 function fmtDayMon(iso){const p=(iso||"").split("-");return p.length===3?(+p[2])+" "+MON[(+p[1])-1]:iso;}   // "19 jul"
 function editField(id,field,val){const t=byId(id);if(!t)return;if(t[field]===val)return;snapshot();t[field]=val;saveTasks();
@@ -725,7 +726,7 @@ function parseHM(s){s=(s||"").trim();if(!s)return "";                  // empty 
   if(h>23||mi>59)return null;return String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0");}
 
 /* ---------- render ---------- */
-function setConn(txt,ok){const c=document.getElementById("conn");c.textContent=txt;c.classList.toggle("ok",!!ok);}
+function setConn(txt,ok){const l=document.getElementById("connlbl"),b=document.getElementById("btnConnect");if(l)l.textContent=txt;if(b)b.classList.toggle("ok",!!ok);}
 let FROZEN=false;                          // read-only view (past day in discipline mode)
 function renderTabs(){
   const wk=weekDates(weekOffset),todayStr_=todayStr(),tabs=document.getElementById("tabs");tabs.innerHTML="";
@@ -813,36 +814,79 @@ function toast(msg){let el=document.getElementById("toast");
 const alerted=new Set();
 function hmMinus1(hm){let[h,m]=hm.split(":").map(Number);m-=1;if(m<0){m=59;h=(h+23)%24;}return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");}
 const BEEP_VIBE=Array(12).fill([300,200]).flat();   // matches the 300ms-on/200ms-off beep pulse
-function ringBell(){
-  try{if(navigator.vibrate)navigator.vibrate(3000);}catch(e){}          // alarm = one continuous buzz
-  try{const rate=8000,beep=beepSamples(rate,3),url=URL.createObjectURL(new Blob([wav8(rate,beep)],{type:"audio/wav"}));
+function ringBell(sec){sec=sec||2;
+  try{if(navigator.vibrate)navigator.vibrate(sec*1000);}catch(e){}          // continuous buzz for the whole ring
+  try{const rate=8000,beep=beepSamples(rate,sec),url=URL.createObjectURL(new Blob([wav8(rate,beep)],{type:"audio/wav"}));
     const a=new Audio(url);a.play().catch(()=>{});a.addEventListener("ended",()=>URL.revokeObjectURL(url));}catch(e){}
 }
 function remindTick(){
   const now=nowHM(),today=todayStr(),cur=settings.mode,wd=weekdayIdxOf(today);
-  tasks.filter(t=>t.mode===cur&&t.hour&&occursOn(t,today,wd)&&!eventFor(t.id,today)).forEach(t=>{
+  tasks.filter(t=>t.mode===cur&&t.hour&&occursOn(t,today,wd)&&!eventFor(t.id,today)).forEach(t=>{   // every task type that has an hour
     const k=t.id+"|"+today;
-    if(hmMinus1(t.hour)===now&&!alerted.has(k)){alerted.add(k);ringBell();toast("⏰ "+(t.text||"task")+" at "+t.hour);}
+    if(hmMinus1(t.hour)===now&&!alerted.has(k)){alerted.add(k);ringBell(2);toast("⏰ "+(t.text||"task")+" at "+t.hour);}   // reminder = 2s
   });
 }
 setInterval(remindTick,15000);
 
+/* ---------- background survival (best-effort) + status notification ----------
+   A looping near-silent audio keeps the page alive far longer when backgrounded/locked,
+   and lets the end beep + vibration fire. NOTE: a browser PWA still can't guarantee
+   truly non-stop background execution or an OS foreground-service notification — that
+   needs a native wrapper. This is the best a web app can do. */
+let keepEl=null;
+function anyRunning(){for(const st of timers.values())if(st&&!st.paused&&!st.ended)return true;return false;}
+function updateKeepAlive(){
+  if(anyRunning()){
+    if(!keepEl){const rate=8000,s=new Uint8Array(rate).fill(128);
+      keepEl=new Audio(URL.createObjectURL(new Blob([wav8(rate,s)],{type:"audio/wav"})));keepEl.loop=true;keepEl.volume=0.02;}
+    keepEl.play().catch(()=>{});
+  }else if(keepEl){keepEl.pause();}
+  updateNotif();
+}
+let notifAsked=false;
+async function updateNotif(){
+  try{
+    if(!("Notification" in window)||!navigator.serviceWorker)return;
+    if(Notification.permission==="default"&&!notifAsked){notifAsked=true;try{await Notification.requestPermission();}catch(e){}}
+    if(Notification.permission!=="granted")return;
+    const reg=await navigator.serviceWorker.ready,running=anyRunning();
+    let head,body;
+    if(running){const k=[...timers.keys()].find(k=>{const st=timers.get(k);return st&&!st.paused&&!st.ended;});
+      const t=k?byId(k.split("|")[0]):null;head="🟢 active";body="now: "+(t?(t.text||"task"):"running");}
+    else{const up=upcomingOccurrences()[0];head="🔴 inactive";body=up?("next: "+(up.t.text||"task")+" · "+fmtDayMon(up.d)):"no upcoming task";}
+    reg.showNotification("TIMER_ — "+head,{body,tag:"timer_status",silent:true,requireInteraction:running,renotify:false,
+      actions:[{action:"stop",title:"close"}]});
+  }catch(e){}
+}
+function stopAllTimers(){
+  [...timers.keys()].forEach(k=>{const st=timers.get(k);if(st&&st.iv)clearInterval(st.iv);stopAudio(k);timers.delete(k);});
+  updateKeepAlive();render();
+}
+if(navigator.serviceWorker)navigator.serviceWorker.addEventListener("message",e=>{
+  if(e.data&&e.data.type==="notif-action"&&e.data.action==="stop")stopAllTimers();
+});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)updateNotif();});
+
 const listEl=document.getElementById("list");
+function buzz(ms){try{if(navigator.vibrate)navigator.vibrate(ms||18);}catch(e){}}
 listEl.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;
   const id=b.dataset.id,date=b.dataset.date,act=b.dataset.act;
-  if(act==="play")play(id,date);
-  if(act==="pause")togglePause(runKey(id,date));
+  if(act==="play"){buzz(18);play(id,date);}
+  if(act==="pause"){buzz(18);togglePause(runKey(id,date));}
   if(act==="del"){armed=null;deleteTask(id);}
   if(act==="reset")resetTask(id);
   if(act==="note")openNote(id);
   if(act==="setlvl"){armed=null;setLevel(id,b.dataset.l);}
   if(act==="repeat")openRepeat(id);
 });
+listEl.addEventListener("keydown",e=>{                    // Enter commits the field & closes the keyboard (no jump to next field)
+  if(e.key==="Enter"&&e.target.matches("input")){e.preventDefault();e.target.blur();}
+});
 listEl.addEventListener("change",e=>{const b=e.target.closest("[data-act]");if(!b)return;
   const id=b.dataset.id,date=b.dataset.date,act=b.dataset.act;
   if(act==="text")editField(id,"text",b.value);
-  if(act==="hour")editField(id,"hour",b.value);
-  if(act==="date")editField(id,"date",b.value);
+  if(act==="hour"){buzz(18);editField(id,"hour",b.value);}
+  if(act==="date"){buzz(18);editField(id,"date",b.value);}
   if(act==="dur")editField(id,"dur",b.value.replace(/[^0-9.]/g,""));
   if(act==="done"){ if(b.checked)markDone(id,date); else if(!undone(id,date))b.checked=true; }
 });
@@ -871,7 +915,7 @@ listEl.addEventListener("pointermove",e=>{
 ["pointerup","pointercancel","pointerleave"].forEach(ev=>listEl.addEventListener(ev,()=>{
   if(dragId){dragId=null;listEl.classList.remove("dragging");saveTasks();render();}
   if(sw){if(sw.el){sw.el.style.transform="";sw.el.style.background="";}
-    if(Math.abs(sw.dx)>=48&&sw.dir){const inp=sw.el.querySelector("input[data-act='text']");if(inp)inp.blur();armed={id:sw.id,type:sw.dir};render();}
+    if(Math.abs(sw.dx)>=48&&sw.dir){const inp=sw.el.querySelector("input[data-act='text']");if(inp)inp.blur();buzz(20);armed={id:sw.id,type:sw.dir};render();}
     sw=null;}
 }));
 
@@ -1273,7 +1317,7 @@ document.getElementById("btnSkip").onclick=openSkipped;
 document.getElementById("btnNextWk").onclick=()=>{weekOffset++;render();};
 document.getElementById("btnUndo").onclick=doUndo;
 document.getElementById("btnRedo").onclick=doRedo;
-if(!HAS_FSA){document.getElementById("btnConnect").textContent="start";document.getElementById("conn").textContent="tap start";}
+if(!HAS_FSA){document.getElementById("connlbl").textContent="start";}
 
 render();
 // re-render each minute so time-gated play buttons unlock when the hour arrives (skip while typing / menu open)
