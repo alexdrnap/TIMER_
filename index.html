@@ -16,8 +16,8 @@
   :root{
     --bg:#0e0f12; --panel:#16181d; --panel2:#1b1e25; --line:#24272e;
     --ink:#d7dae0; --dim:#7d838f; --faint:#4a4f59;
-    --l1:#e0a52b;   /* level 1 - daily anchor (amber) */
-    --l2:#4a9fe0;   /* level 2 - scheduled (blue) */
+    --l1:#4a9fe0;   /* level 1 - daily anchor (blue) */
+    --l2:#e8c93a;   /* level 2 - scheduled (yellow) */
     --l3:#8a8f9a;   /* level 3 - quick/volatile (grey) */
     --green:#4bbf7a; --danger:#d9534f;
   }
@@ -69,21 +69,22 @@
   .grp.sched,.grp.unsched{font-size:11px;color:var(--dim)}
   .grp.sub{margin-left:10px;font-size:9px;opacity:.8}
   .task{touch-action:pan-y}
-  .task.armdel{box-shadow:inset 3px 0 0 var(--danger)} .task.armlvl{box-shadow:inset 3px 0 0 #4a78c8}
+  .task.armdel{outline:1px solid var(--danger)} .task.armlvl{outline:1px solid var(--l1)}
+  .ldot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle}
 
   .task{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 4px;margin:1px 0;position:relative;overflow:hidden}
-  .task.l1{border-left:3px solid var(--l1)} .task.l2{border-left:3px solid var(--l2)} .task.l3{border-left:3px solid var(--l3)}
-  .task.mode-timer{box-shadow:inset -3px 0 0 rgba(75,191,122,.55)}    /* timer = green edge */
-  .task.mode-sw{box-shadow:inset -3px 0 0 rgba(217,83,79,.55)}        /* stopwatch = red edge */
-  .task.done{opacity:.6}
-  .task.overdue:not(.done){border-color:#5a2f2c}
+  .task.l1{border-left:3px solid var(--l1);box-shadow:inset -3px 0 0 var(--l1)}
+  .task.l2{border-left:3px solid var(--l2);box-shadow:inset -3px 0 0 var(--l2)}
+  .task.l3{border-left:3px solid var(--l3);box-shadow:inset -3px 0 0 var(--l3)}
+  .task.done{opacity:.55}
   .task.dragging,.branch.dragging{outline:1px dashed var(--l2);opacity:.85;background:#12202b}
   #list.dragging{touch-action:none;user-select:none}
   .row{display:flex;align-items:center;gap:4px;flex-wrap:nowrap}
   .txt{flex:1 1 40px;min-width:24px}
   .txt input{width:100%;border:1px solid var(--line);border-radius:4px;padding:1px 3px;-webkit-user-select:none;-webkit-touch-callout:none;
     background-color:#0d0f13;background-image:repeating-linear-gradient(45deg,rgba(150,156,170,.13) 0 1px,transparent 1px 5px)}
-  .task.done .txt input,.branch.done .txt input{text-decoration:line-through;color:var(--dim)}
+  .task.l1 .txt input{color:#a9d3f2} .task.l2 .txt input{color:#f0e29a} .task.l3 .txt input{color:#c3c7cf}   /* lighter level nuance */
+  .task.done .txt input,.branch.done .txt input{text-decoration:line-through}
   .ck{flex:0 0 auto;width:16px;height:16px;accent-color:var(--green)}
   .exp{flex:0 0 auto;width:15px;height:22px;padding:0;border:none;background:transparent;color:var(--dim);font-size:11px}
   .play{flex:0 0 auto;width:26px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--l2);border-color:#243b4d;font-size:12px;padding:0}
@@ -517,7 +518,9 @@ function togglePause(key){
 }
 function tick(key,st){
   if(st.dur>0 && !st.ended && (st.before+(Date.now()-st.t0)/1000)>=st.dur){    // reached the end
-    st.ended=true;clearInterval(st.iv);st.iv=null;render();return;
+    st.ended=true;clearInterval(st.iv);st.iv=null;
+    try{if(navigator.vibrate)navigator.vibrate(BEEP_VIBE);}catch(e){}          // end = vibrate in the beep rhythm
+    render();return;
   }
   const disp=document.querySelector(`.elapsed[data-run="${key}"]`);
   if(disp){disp.textContent=fmtElapsed(st);disp.classList.toggle("alarm",st.dur>0&&elapsedOf(st)>=st.dur);}
@@ -807,8 +810,9 @@ function toast(msg){let el=document.getElementById("toast");
 /* ---------- reminder: ring 3s + vibrate 1 minute before a task's set hour (works while the app is open) ---------- */
 const alerted=new Set();
 function hmMinus1(hm){let[h,m]=hm.split(":").map(Number);m-=1;if(m<0){m=59;h=(h+23)%24;}return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");}
+const BEEP_VIBE=Array(12).fill([300,200]).flat();   // matches the 300ms-on/200ms-off beep pulse
 function ringBell(){
-  try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400,150,400]);}catch(e){}
+  try{if(navigator.vibrate)navigator.vibrate(3000);}catch(e){}          // alarm = one continuous buzz
   try{const rate=8000,beep=beepSamples(rate,3),url=URL.createObjectURL(new Blob([wav8(rate,beep)],{type:"audio/wav"}));
     const a=new Audio(url);a.play().catch(()=>{});a.addEventListener("ended",()=>URL.revokeObjectURL(url));}catch(e){}
 }
@@ -1020,9 +1024,9 @@ function openStats(){
     <div class="hint" style="margin:6px 0">${WINLBL[statWin]}${statWin==="t"?" — the day's total (levels weighted, skips −5% each)":" — average of each day's total"}</div>
 
     <div class="stat"><span><b>Discipline</b> <span class="mut">(L1·50 L2·30 L3·20)</span></span><b>${overall==null?'—':overall+'%'}</b></div>
-    <div class="stat"><span>level 1 · daily <span class="mut">50%</span></span><b>${show(s1)}</b></div>
-    <div class="stat"><span>level 2 · scheduled <span class="mut">30%</span></span><b>${show(s2)}</b></div>
-    <div class="stat"><span>level 3 · quick <span class="mut">20%</span></span><b>${show(s3)}</b></div>
+    <div class="stat"><span><span class="ldot" style="background:var(--l1)"></span>level 1 · daily <span class="mut">50%</span></span><b>${show(s1)}</b></div>
+    <div class="stat"><span><span class="ldot" style="background:var(--l2)"></span>level 2 · scheduled <span class="mut">30%</span></span><b>${show(s2)}</b></div>
+    <div class="stat"><span><span class="ldot" style="background:var(--l3)"></span>level 3 · quick <span class="mut">20%</span></span><b>${show(s3)}</b></div>
     <div class="stat"><span>skips in window</span><b>${skTot}${skTot?` <span class="mut">(−5% each/day)</span>`:''}</b></div>
     ${disc&&settings.discStart?`<div class="stat"><span>current streak <span class="mut">since ${fmtDM(settings.discStart)}</span></span><b>${discStreak()} days</b></div>`:''}
 
@@ -1090,9 +1094,9 @@ window.showArchive=function(i){const a=archives[i];if(!a)return;const P=v=>v==="
     <div class="stat"><span>streak length</span><b>${a.days} days</b></div>
     <div class="stat"><span>period</span><b>${fmtD(a.start)} → ${fmtD(a.end)}</b></div>
     <div class="stat"><span><b>Discipline</b></span><b>${P(a.overall)}</b></div>
-    <div class="stat"><span>level 1 · daily</span><b>${P(a.l1)}</b></div>
-    <div class="stat"><span>level 2 · scheduled</span><b>${P(a.l2)}</b></div>
-    <div class="stat"><span>level 3 · quick</span><b>${P(a.l3)}</b></div>
+    <div class="stat"><span><span class="ldot" style="background:var(--l1)"></span>level 1 · daily</span><b>${P(a.l1)}</b></div>
+    <div class="stat"><span><span class="ldot" style="background:var(--l2)"></span>level 2 · scheduled</span><b>${P(a.l2)}</b></div>
+    <div class="stat"><span><span class="ldot" style="background:var(--l3)"></span>level 3 · quick</span><b>${P(a.l3)}</b></div>
     <div class="mbtns"><button onclick="openArchives()">← back</button></div>`);
 };
 window.delArchive=function(i){archives.splice(i,1);saveArchives();openArchives();};
