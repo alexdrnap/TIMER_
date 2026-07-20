@@ -339,8 +339,19 @@ function parseCSV(text){
 
 /* ---------- filesystem (desktop: shared folder · phone: private on-device OPFS) ---------- */
 const HAS_FSA = !!window.showDirectoryPicker;
+function nativeFs(){return window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Filesystem;}
+function bufToB64(buf){const b=new Uint8Array(buf);let s="";const c=0x8000;for(let i=0;i<b.length;i+=c)s+=String.fromCharCode.apply(null,b.subarray(i,i+c));return btoa(s);}
+function b64ToBlob(b64,type){const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:type||"application/octet-stream"});}
+async function nRead(name,bin){try{const r=await nativeFs().readFile(bin?{path:"TIMER/"+name,directory:"DATA"}:{path:"TIMER/"+name,directory:"DATA",encoding:"utf8"});return r.data;}catch(e){return null;}}
+async function nWrite(name,data,bin){await nativeFs().writeFile(bin?{path:"TIMER/"+name,data,directory:"DATA",recursive:true}:{path:"TIMER/"+name,data,directory:"DATA",encoding:"utf8",recursive:true});}
+async function nDelete(name){try{await nativeFs().deleteFile({path:"TIMER/"+name,directory:"DATA"});}catch(e){}}
 async function connect(){
   try{
+    if(isNative()){
+      if(!nativeFs()){setConn("need fs plugin",false);return;}   // Filesystem plugin not installed/synced
+      timerDir="native";dbDir="native";
+      await loadAll();await loadSound();primeAudio();setConn("connected",true);return;
+    }
     if(HAS_FSA){
       dbDir=await window.showDirectoryPicker({id:"database",mode:"readwrite"});
       timerDir=await dbDir.getDirectoryHandle("TIMER",{create:true});
@@ -355,9 +366,12 @@ async function connect(){
     setConn("connected",true);
   }catch(e){if(e.name!=="AbortError"){console.error(e);setConn("connect failed",false);}}
 }
-async function readFile(dir,name){try{const h=await dir.getFileHandle(name);return await (await h.getFile()).text();}catch(e){return null;}}
-async function writeFile(dir,name,text){const h=await dir.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(text);await w.close();}
-async function writeBinary(dir,name,buf){const h=await dir.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(buf);await w.close();}
+async function readFile(dir,name){if(dir==="native")return await nRead(name,false);
+  try{const h=await dir.getFileHandle(name);return await (await h.getFile()).text();}catch(e){return null;}}
+async function writeFile(dir,name,text){if(dir==="native"){await nWrite(name,text,false);return;}
+  const h=await dir.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(text);await w.close();}
+async function writeBinary(dir,name,buf){if(dir==="native"){await nWrite(name,bufToB64(buf),true);return;}
+  const h=await dir.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(buf);await w.close();}
 async function loadAll(){
   const tt=await readFile(timerDir,TASKS_CSV);tasks=tt?parseCSV(tt).map(normTask):[];
   const et=await readFile(timerDir,EVENTS_CSV);events=et?parseCSV(et):[];
@@ -446,7 +460,8 @@ async function buildAlarmURL(remaining,beepSecs){
 }
 async function loadSound(){                  // decode imported sound (if any) for the beep
   customBuf=null;let ab=null;
-  for(const dir of[timerDir,dbDir]){if(!dir)continue;
+  if(timerDir==="native"){const b64=await nRead(SOUND_FILE,true);if(b64)ab=await b64ToBlob(b64).arrayBuffer();}
+  else for(const dir of[timerDir,dbDir]){if(!dir||dir==="native")continue;
     try{ab=await(await(await dir.getFileHandle(SOUND_FILE)).getFile()).arrayBuffer();break;}catch(e){}}
   if(ab){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();customBuf=await ctx.decodeAudioData(ab);if(ctx.close)ctx.close();}catch(e){customBuf=null;}}
 }
@@ -496,7 +511,7 @@ function play(id,date){
   const before = dur>0 ? 0 : (parseFloat(t.acc)||0);       // stopwatch continues from stored time
   const st={t0:Date.now(),dur,before,paused:false,iv:null,playedISO:new Date().toISOString()};
   st.iv=setInterval(()=>tick(key,st),250);timers.set(key,st);
-  if(dur>0)armAudio(key,dur);           // beeps 5s at the end — baked so it fires even when the screen is locked
+  ensureNotifPerm();                     // (gesture) so locked-screen alerts can fire
   render();updateKeepAlive();
 }
 function elapsedOf(st){let e=st.before+(st.paused?0:(Date.now()-st.t0)/1000);
@@ -509,20 +524,18 @@ function togglePause(key){
   const st=timers.get(key);if(!st)return;
   if(st.paused){                                   // resume
     st.t0=Date.now();st.paused=false;st.iv=setInterval(()=>tick(key,st),250);
-    if(key===activeKey&&audioEl)audioEl.play().catch(()=>{});
-    if("mediaSession" in navigator)navigator.mediaSession.playbackState="playing";
   }else{                                           // pause (in place, no rewind)
     st.before+=(Date.now()-st.t0)/1000;st.paused=true;clearInterval(st.iv);st.iv=null;
-    if(key===activeKey&&audioEl)audioEl.pause();
     if(st.dur<=0){const t=byId(key.split("|")[0]);if(t){t.acc=String(Math.floor(st.before));saveTasks();}}   // stopwatch: store running total
-    if("mediaSession" in navigator)navigator.mediaSession.playbackState="paused";
   }
   render();updateKeepAlive();
 }
 function tick(key,st){
   if(st.dur>0 && !st.ended && (st.before+(Date.now()-st.t0)/1000)>=st.dur){    // reached the end
     st.ended=true;clearInterval(st.iv);st.iv=null;
-    try{if(navigator.vibrate)navigator.vibrate(BEEP_VIBE);}catch(e){}          // end = vibrate in the beep rhythm
+    const t=byId(key.split("|")[0]);
+    ringBell(5,BEEP_VIBE);                                                    // foreground: 5s beep + beep-rhythm buzz
+    notifyAlert("⏰ time's up","done: "+((t&&t.text)||"task"),BEEP_VIBE);      // locked/background: OS sound + vibration
     render();updateKeepAlive();return;
   }
   const disp=document.querySelector(`.elapsed[data-run="${key}"]`);
@@ -814,19 +827,33 @@ function toast(msg){let el=document.getElementById("toast");
 const alerted=new Set();
 function hmMinus1(hm){let[h,m]=hm.split(":").map(Number);m-=1;if(m<0){m=59;h=(h+23)%24;}return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");}
 const BEEP_VIBE=Array(12).fill([300,200]).flat();   // matches the 300ms-on/200ms-off beep pulse
-function ringBell(sec){sec=sec||2;
-  try{if(navigator.vibrate)navigator.vibrate(sec*1000);}catch(e){}          // continuous buzz for the whole ring
+function ringBell(sec,vibe){sec=sec||2;
+  try{if(navigator.vibrate)navigator.vibrate(vibe||sec*1000);}catch(e){}       // foreground buzz
   try{const rate=8000,beep=beepSamples(rate,sec),url=URL.createObjectURL(new Blob([wav8(rate,beep)],{type:"audio/wav"}));
     const a=new Audio(url);a.play().catch(()=>{});a.addEventListener("ended",()=>URL.revokeObjectURL(url));}catch(e){}
 }
+async function ensureNotifPerm(){
+  if(!("Notification" in window))return false;
+  if(Notification.permission==="granted")return true;
+  if(Notification.permission==="denied")return false;
+  try{return (await Notification.requestPermission())==="granted";}catch(e){return false;}
+}
+async function notifyAlert(title,body,vibe){   // OS-level alert: sound + vibration fire even when locked/backgrounded
+  try{if(!(await ensureNotifPerm())||!navigator.serviceWorker)return;
+    const reg=await navigator.serviceWorker.ready;
+    reg.showNotification(title,{body,vibrate:vibe,tag:"timer_alert",renotify:true,requireInteraction:true});
+  }catch(e){}
+}
 function remindTick(){
   const now=nowHM(),today=todayStr(),cur=settings.mode,wd=weekdayIdxOf(today);
-  tasks.filter(t=>t.mode===cur&&t.hour&&occursOn(t,today,wd)&&!eventFor(t.id,today)).forEach(t=>{   // every task type that has an hour
-    const k=t.id+"|"+today;
-    if(hmMinus1(t.hour)===now&&!alerted.has(k)){alerted.add(k);ringBell(2);toast("⏰ "+(t.text||"task")+" at "+t.hour);}   // reminder = 2s
+  tasks.filter(t=>t.mode===cur&&t.hour&&occursOn(t,today,wd)&&!eventFor(t.id,today)).forEach(t=>{   // any task type with an hour set
+    const k=t.id+"|"+today,from=hmMinus1(t.hour);
+    if(now>=from&&now<=t.hour&&!alerted.has(k)){    // fire anywhere in the 1-minute-before window (robust to interval jitter)
+      alerted.add(k);ringBell(2);notifyAlert("⏰ "+(t.text||"task"),"at "+t.hour,[2000]);toast("⏰ "+(t.text||"task")+" at "+t.hour);
+    }
   });
 }
-setInterval(remindTick,15000);
+setInterval(remindTick,5000);
 
 /* ---------- background survival (best-effort) + status notification ----------
    A looping near-silent audio keeps the page alive far longer when backgrounded/locked,
@@ -841,7 +868,7 @@ function updateKeepAlive(){
       keepEl=new Audio(URL.createObjectURL(new Blob([wav8(rate,s)],{type:"audio/wav"})));keepEl.loop=true;keepEl.volume=0.02;}
     keepEl.play().catch(()=>{});
   }else if(keepEl){keepEl.pause();}
-  updateNotif();
+  updateNotif();fgUpdate();
 }
 let notifAsked=false;
 async function updateNotif(){
@@ -866,6 +893,30 @@ if(navigator.serviceWorker)navigator.serviceWorker.addEventListener("message",e=
   if(e.data&&e.data.type==="notif-action"&&e.data.action==="stop")stopAllTimers();
 });
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)updateNotif();});
+
+/* ---------- NATIVE foreground service bridge (only runs inside the Capacitor wrapper; inert in a browser) ---------- */
+function isNative(){return !!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());}
+function FGS(){return window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.ForegroundService;}
+let fgStarted=false;
+function fgOpts(){
+  const running=anyRunning();let body;
+  if(running){const k=[...timers.keys()].find(k=>{const st=timers.get(k);return st&&!st.paused&&!st.ended;});
+    const t=k?byId(k.split("|")[0]):null;body="● active — "+(t?(t.text||"task"):"running");}
+  else{const up=upcomingOccurrences()[0];body="○ inactive — next: "+(up?(up.t.text||"task"):"none");}
+  return {id:1,title:"TIMER_",body,smallIcon:"ic_stat_timer",buttons:[{title:"close",id:1}],silent:true,notificationChannelId:"timer"};
+}
+async function fgInit(){
+  const F=FGS();if(!isNative())return;
+  if(!timerDir&&nativeFs())await connect();                  // native app auto-connects app storage (no picker)
+  if(!F)return;
+  try{await F.requestPermissions();}catch(e){}
+  try{await F.createNotificationChannel({id:"timer",name:"TIMER_",description:"Timer status",importance:3});}catch(e){}
+  try{F.addListener&&F.addListener("buttonClicked",ev=>{if(ev&&ev.buttonId===1)stopAllTimers();});}catch(e){}
+  try{await F.startForegroundService(fgOpts());fgStarted=true;}catch(e){}   // persistent service from launch
+}
+async function fgUpdate(){const F=FGS();if(!isNative()||!F||!fgStarted)return;try{await F.updateForegroundService(fgOpts());}catch(e){}}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",fgInit);
+else fgInit();
 
 const listEl=document.getElementById("list");
 function buzz(ms){try{if(navigator.vibrate)navigator.vibrate(ms||18);}catch(e){}}
@@ -973,7 +1024,10 @@ function updateRecUI(){
   else{if(pv){pv.style.display="none";pv.removeAttribute("src");}if(cl)cl.style.display="none";if(st&&!on)st.textContent="";}
 }
 window.clearRec=function(){recBlob=null;recChunks=[];updateRecUI();};
-window.playAudio=async function(name){try{const dir=await getAudioDir();const f=await(await dir.getFileHandle(name)).getFile();
+window.playAudio=async function(name){try{
+  if(timerDir==="native"){const b64=await nRead("audio_logs/"+name,true);if(!b64){toast("audio not found");return;}
+    if(!logAudio)logAudio=new Audio();logAudio.src=URL.createObjectURL(b64ToBlob(b64,"audio/"+recExt));logAudio.play().catch(()=>{});return;}
+  const dir=await getAudioDir();const f=await(await dir.getFileHandle(name)).getFile();
   if(!logAudio)logAudio=new Audio();logAudio.src=URL.createObjectURL(f);logAudio.play().catch(()=>{});}catch(e){toast("audio not found");}};
 
 /* note editor (text and/or 30s voice) */
@@ -991,14 +1045,16 @@ window.saveNote=async function(id){
   const t=byId(id);const v=(document.getElementById("noteIn").value||"").trim();
   if(!v&&!recBlob){closeModal();return;}
   const d=new Date();let audioName="";
-  if(recBlob){try{const dir=await getAudioDir();
+  if(recBlob){try{
     audioName=slug(t.text)+"_"+ymd(d)+"_"+d.toTimeString().slice(0,8).replace(/:/g,"")+"."+recExt;
-    await writeBinary(dir,audioName,await recBlob.arrayBuffer());}catch(e){toast("couldn't save audio");}}
+    if(timerDir==="native")await writeBinary("native","audio_logs/"+audioName,await recBlob.arrayBuffer());
+    else{const dir=await getAudioDir();await writeBinary(dir,audioName,await recBlob.arrayBuffer());}
+  }catch(e){toast("couldn't save audio");}}
   notes.push({id:uid(),task_id:id,task_text:t.text,level:t.level,date:ymd(d),time:d.toTimeString().slice(0,8),note:v,audio:audioName});
   recBlob=null;recChunks=[];saveNotes();closeModal();render();
 };
 window.deleteNote=async function(i){const n=notes[+i];if(!n||!noteMutable(n))return;
-  if(n.audio){try{const dir=await getAudioDir();await dir.removeEntry(n.audio);}catch(e){}}
+  if(n.audio){try{if(timerDir==="native")await nDelete("audio_logs/"+n.audio);else{const dir=await getAudioDir();await dir.removeEntry(n.audio);}}catch(e){}}
   notes=notes.filter(x=>x!==n);saveNotes();openLog();
 };
 
