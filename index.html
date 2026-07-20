@@ -48,10 +48,12 @@
 
   .tabs{display:flex;gap:3px;padding:2px 6px 0;overflow-x:auto;border-bottom:1px solid var(--line)}
   .tab{flex:0 0 auto;padding:3px 9px;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;
-    background:var(--panel);color:var(--dim);font-size:12px;position:relative;top:1px;white-space:nowrap}
-  .tab.active{background:var(--panel2);color:var(--ink)}
+    background:var(--panel);color:var(--dim);font-size:12px;position:relative;top:1px;white-space:nowrap;opacity:.7}
+  .tab.active{background:var(--panel2);color:var(--ink);opacity:1;font-weight:700;
+    border-color:var(--l1);border-top-width:2px;box-shadow:0 -2px 6px rgba(74,159,224,.25);top:0}
+  .tab.active small{color:var(--ink)}
   .tab small{display:block;font-size:9px;color:var(--faint)}
-  .tab.today small{color:var(--l2)}
+  .tab.today small{color:var(--l1)}
 
   .subbar{display:flex;align-items:center;gap:8px;padding:3px 6px}
   .subbar .next{color:var(--l1);border-color:#4a3a1c;padding:3px 8px}
@@ -73,11 +75,10 @@
   .ldot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle}
 
   .task{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 4px;margin:1px 0;position:relative;overflow:hidden}
-  .task.l1{border-left:3px solid var(--l1);box-shadow:inset -3px 0 0 var(--l1)}
-  .task.l2{border-left:3px solid var(--l2);box-shadow:inset -3px 0 0 var(--l2)}
-  .task.l3{border-left:3px solid var(--l3);box-shadow:inset -3px 0 0 var(--l3)}
+  .task.l1{--acc:var(--l1)} .task.l2{--acc:var(--l2)} .task.l3{--acc:var(--l3)}
+  .task.l1{border-left:3px solid var(--l1)} .task.l2{border-left:3px solid var(--l2)} .task.l3{border-left:3px solid var(--l3)}
   .task.done{opacity:.55}
-  .task.dragging,.branch.dragging{outline:1px dashed var(--l2);opacity:.85;background:#12202b}
+  .task.dragging,.branch.dragging{outline:1px dashed var(--acc,var(--l2));opacity:.85;background:#12202b}
   #list.dragging{touch-action:none;user-select:none}
   .row{display:flex;align-items:center;gap:4px;flex-wrap:nowrap}
   .txt{flex:1 1 40px;min-width:24px}
@@ -85,15 +86,15 @@
     background-color:#0d0f13;background-image:repeating-linear-gradient(45deg,rgba(150,156,170,.13) 0 1px,transparent 1px 5px)}
   .task.l1 .txt input{color:#a9d3f2} .task.l2 .txt input{color:#f0e29a} .task.l3 .txt input{color:#c3c7cf}   /* lighter level nuance */
   .task.done .txt input,.branch.done .txt input{text-decoration:line-through}
-  .ck{flex:0 0 auto;width:16px;height:16px;accent-color:var(--green)}
-  .exp{flex:0 0 auto;width:15px;height:22px;padding:0;border:none;background:transparent;color:var(--dim);font-size:11px}
-  .play{flex:0 0 auto;width:26px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--l2);border-color:#243b4d;font-size:12px;padding:0}
-  .play.running{color:var(--bg);background:var(--l2);border-color:var(--l2);animation:pulse 1s infinite}
-  @keyframes pulse{50%{opacity:.55}}
-  .elapsed{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--l2);font-size:11px;text-align:right}
-  .elapsed.alarm{color:var(--l1);animation:pulse .7s infinite}
-  .elapsed.sw{color:var(--dim);opacity:.85}
+  .ck{flex:0 0 auto;width:16px;height:16px;accent-color:var(--acc,var(--green))}
+  .exp{flex:0 0 auto;width:15px;height:22px;padding:0;border:none;background:transparent;color:var(--acc,var(--dim));font-size:11px}
+  .play{flex:0 0 auto;width:26px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--acc,var(--l2));border-color:var(--acc,#243b4d);font-size:12px;padding:0}
+  .play.running{color:var(--bg);background:var(--acc,var(--l2));border-color:var(--acc,var(--l2));animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.5}}
+  .elapsed{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--acc,var(--l2));font-size:11px;text-align:right}
+  .elapsed.alarm{animation:pulse .6s infinite}
   .elapsed.paused{opacity:.5}
+  .note,.rst{color:var(--acc,var(--dim))}
   .hr{flex:0 0 auto;width:84px;padding:1px 2px}
   .dur{flex:0 0 auto;width:36px;text-align:center;padding:1px 2px;background-color:#0d0f13;background-image:repeating-linear-gradient(45deg,rgba(150,156,170,.13) 0 1px,transparent 1px 5px)}
   .pick{position:relative;flex:0 0 auto;display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:4px;overflow:hidden;
@@ -102,7 +103,7 @@
   .pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0}
   .dtpick{width:58px} .hrpick{width:48px}
   .carry{flex:0 0 auto;width:15px;height:15px;border-radius:50%;background:var(--danger);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
-  .spec{flex:0 0 auto;font-size:8px;letter-spacing:-.2px;color:var(--l3);background:#12202b;border:1px solid var(--line);border-radius:3px;padding:0 2px;max-width:82px;overflow:hidden;white-space:nowrap;line-height:15px}
+  .spec{flex:0 0 auto;font-size:8px;letter-spacing:-.2px;color:var(--acc,var(--l3));background:#12202b;border:1px solid var(--line);border-radius:3px;padding:0 2px;max-width:82px;overflow:hidden;white-space:nowrap;line-height:15px}
   .wdpick{display:flex;gap:4px;margin:8px 0;flex-wrap:wrap}
   .wdpick .wd{flex:1;min-width:34px;padding:8px 0;color:var(--dim)}
   .wdpick .wd.on{background:var(--l3);color:var(--bg);border-color:var(--l3)}
@@ -134,6 +135,7 @@
   #btnPrevWk,#btnNextWk,#btnHome{width:24px;padding:0;color:var(--dim)}
   .np{cursor:pointer} .skrow .skt,.skrow .sklvl{cursor:pointer}
   .np{display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)}
+  .np.npl1 .h{color:#a9d3f2} .np.npl2 .h{color:#f0e29a} .np.npl3 .h{color:#c3c7cf}
   .np .h{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .np-l{flex:0 0 auto;width:20px;text-align:center;font-size:10px;font-weight:700}
   .np-l.lv1{color:var(--l1)} .np-l.lv2{color:var(--l2)} .np-l.lv3{color:var(--l3)}
@@ -621,7 +623,7 @@ function accrueRecurring(){   // recurring L2/L3: miss on passed unchecked occur
 
 /* ---------- undo / redo (structural: add / delete / reset) ---------- */
 let undoStack=[],redoStack=[];
-function snapshot(){undoStack.push(JSON.stringify(tasks));if(undoStack.length>40)undoStack.shift();redoStack=[];}
+function snapshot(){undoStack.push(JSON.stringify(tasks));if(undoStack.length>10)undoStack.shift();redoStack=[];}
 function doUndo(){if(!undoStack.length){toast("nothing to undo");return;}
   redoStack.push(JSON.stringify(tasks));tasks=JSON.parse(undoStack.pop()).map(normTask);saveTasks();render();}
 function doRedo(){if(!redoStack.length){toast("nothing to redo");return;}
@@ -636,7 +638,7 @@ function addTask(){                                        // new task defaults 
   setTimeout(()=>{const el=document.querySelector(`.txt input[data-id="${t.id}"]`);if(el)el.focus();},40);
 }
 function setLevel(id,lvl){
-  const t=byId(id);if(!t)return;t.level=lvl;
+  const t=byId(id);if(!t)return;snapshot();t.level=lvl;
   if(lvl==="1"){t.date="";t.repeat="";t.skipped="0";}
   else if(!t.date)t.date=todayStr();
   saveTasks();render();
@@ -656,16 +658,16 @@ function openRepeat(id){
       <div class="hint">Repeat this scheduled task, or "once".</div>
       <div class="modesw rp"><button class="${!t.repeat?'sel':''}" data-rp="">once</button><button class="${t.repeat==='3d'?'sel':''}" data-rp="3d">3d</button><button class="${t.repeat==='2w'?'sel':''}" data-rp="2w">2w</button><button class="${t.repeat==='m'?'sel':''}" data-rp="m">monthly</button><button class="${t.repeat==='y'?'sel':''}" data-rp="y">yearly</button></div>
       <div class="mbtns"><button class="prime" onclick="closeModal()">done</button></div>`);
-    sheet.querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>{t.repeat=b.dataset.rp;t.skipped="0";t.skipStart="";t.skipEnd="";saveTasks();openRepeat(id);render();});
+    sheet.querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>{snapshot();t.repeat=b.dataset.rp;t.skipped="0";t.skipStart="";t.skipEnd="";saveTasks();openRepeat(id);render();});
   }
 }
 window.saveRepeat=function(id){const t=byId(id);if(!t)return;
   const days=[...sheet.querySelectorAll(".wd.on")].map(b=>+b.dataset.wd);
   if(days.length>=7){toast("all 7 = a level-1 anchor");return;}
-  t.repeat=days.sort((a,b)=>a-b).join(",");t.skipped="0";t.skipStart="";t.skipEnd="";
+  snapshot();t.repeat=days.sort((a,b)=>a-b).join(",");t.skipped="0";t.skipStart="";t.skipEnd="";
   saveTasks();closeModal();render();
 };
-window.clearRepeat=function(id){const t=byId(id);if(!t)return;t.repeat="";t.skipped="0";saveTasks();closeModal();render();};
+window.clearRepeat=function(id){const t=byId(id);if(!t)return;snapshot();t.repeat="";t.skipped="0";saveTasks();closeModal();render();};
 function nextOccurrence(t){const today=todayStr();let d=new Date(today+"T00:00");
   for(let i=0;i<400;i++){const ds=ymd(d);if(ds>=(t.date||"")&&occursOnRaw(t,ds,weekdayIdxOf(ds)))return ds;d.setDate(d.getDate()+1);}return t.date||today;}
 function upcomingOccurrences(){    // ONE row per task (L2/L3 only — not daily L1), first occurrence within the next 30 days
@@ -697,7 +699,7 @@ function resetTask(id){const t=byId(id);if(!t)return;snapshot();
   t.dur="";t.hour="";t.acc="0";saveTasks();render();}          // keeps the text field
 const MON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
 function fmtDayMon(iso){const p=(iso||"").split("-");return p.length===3?(+p[2])+" "+MON[(+p[1])-1]:iso;}   // "19 jul"
-function editField(id,field,val){const t=byId(id);if(!t)return;t[field]=val;saveTasks();
+function editField(id,field,val){const t=byId(id);if(!t)return;if(t[field]===val)return;snapshot();t[field]=val;saveTasks();
   if(field==="date"){catchUp();render();} else if(field==="dur"||field==="hour")render();}
 function deleteTask(id){const t=byId(id);if(!t)return;
   if(t.level==="1"&&!confirm("Delete a level-1 daily anchor? Its history stays in events/notes."))return;
@@ -778,7 +780,7 @@ function renderTask(t,occDate){
   const chkLock = (isDone && (()=>{const ev=eventFor(t.id,occDate);return ev&&!eventMutable(ev);})())||FROZEN;
   const canPlay = playAllowed(t,occDate)&&!FROZEN, isSW=!((parseFloat(t.dur)||0)>0);
   const showHour=t.level!=="3", showDate=t.level==="2";     // L2 = scheduled (date + hour); L1 = daily (hour); L3 = quick (neither)
-  const rowMode = moveMode?"move":(armed&&armed.id===t.id?armed.type:"normal");
+  const rowMode = (moveMode&&!t.hour)?"move":(armed&&armed.id===t.id?armed.type:"normal");   // scheduled (has hour) never gets the move grip
   const simple = rowMode!=="normal";                        // move / swipe-armed: hide play / timer / time / min
   const cls=["task","l"+t.level,isSW?"mode-sw":"mode-timer"];if(isDone)cls.push("done");if(!isDone&&!FROZEN&&isOverdue(t,occDate))cls.push("overdue");if(dragId===t.id)cls.push("dragging");if(FROZEN)cls.push("frozen");if(rowMode==="del")cls.push("armdel");if(rowMode==="lvl")cls.push("armlvl");
   const wrap=document.createElement("div");
@@ -974,7 +976,7 @@ document.getElementById("btnLog").onclick=openLog;
 /* next = one row per task (first occurrence in next 30 days), grouped by level */
 document.getElementById("btnNext").onclick=()=>{
   const items=upcomingOccurrences();
-  const row=o=>`<div class="np" onclick="gotoDate('${o.d}')">
+  const row=o=>`<div class="np npl${o.t.level}" onclick="gotoDate('${o.d}')">
     <span class="h">${escAttr(o.t.text||"task")}${repeatSpec(o.t)?` <span class="mut">·${repeatSpec(o.t)}</span>`:''}</span>
     <div class="when mut" style="font-size:11px">${fmtDayMon(o.d)} · ${DAYLABEL[weekdayIdxOf(o.d)]}${o.t.hour?' · '+o.t.hour:''}${o.t.dur?' · '+o.t.dur+'m':''}</div></div>`;
   const NAMES={1:"level 1 · daily",2:"level 2 · scheduled",3:"level 3 · quick"};
